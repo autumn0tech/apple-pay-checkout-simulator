@@ -281,6 +281,18 @@ export default function Checkout() {
                     allowed: false,
                     source: "Apple · Braintree",
                   },
+                  {
+                    scenario: "Customer consent to future MIT charges captured before NFC tap",
+                    note: "Braintree policy: explicit billing agreement disclosure required at checkout before vaulting Apple Pay — not during or after",
+                    allowed: true,
+                    source: "Braintree policy",
+                  },
+                  {
+                    scenario: "Charging vaulted Apple Pay PM when customer is present and can authorize",
+                    note: "Results in declines — vaulted Apple Pay is for MIT only when the customer is not available to authorize in real-time",
+                    allowed: false,
+                    source: "Braintree docs",
+                  },
                 ]) : [
                   {
                     scenario: "Single session: product total + recurringPaymentRequest",
