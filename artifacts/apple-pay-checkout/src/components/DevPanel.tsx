@@ -487,6 +487,19 @@ const BRAINTREE_TWO_SESSION_CODE = `// ── IN-STORE TWO-SESSION (Braintree Gr
 // automatically applied. Auth expiry is 24 hours — parse authorizationExpiresAt
 // and build re-auth logic. Future charges are card-not-present (CNP) pricing.
 
+// ── CONSENT REQUIREMENT (Braintree policy — must happen before NFC tap) ──
+// Vaulting Apple Pay is ONLY permitted when the customer explicitly consents to
+// future merchant-initiated transactions during checkout. Display a billing
+// agreement disclosure before the Apple Pay button / NFC reader is presented.
+//
+// Do NOT use a vaulted PM when the customer is present and able to authorize
+// in real-time — Braintree policy states this will result in declines.
+//
+// Recommended checkout disclosure (shown before the NFC tap):
+//   "By saving your Apple Pay card, you authorize AudioHound to charge your
+//    stored payment method for future subscription renewals. You may cancel
+//    at any time via your account settings."
+
 const gql = (query, variables) =>
   fetch('https://payments.sandbox.braintree-api.com/graphql', {
     method: 'POST',
@@ -593,6 +606,19 @@ const BRAINTREE_ONE_SESSION_CODE = `// ── IN-STORE ONE-SESSION (Braintree Gr
 //   • MIT flag auto-applied → 24hr authorizationExpiresAt on digital wallet PMs
 //   • Future charges = card-not-present (CNP) pricing
 //   • paymentMethodId is UNIQUE PER VAULT — use uniqueNumberIdentifier for analytics
+
+// ── CONSENT REQUIREMENT (Braintree policy — must happen before NFC tap) ──
+// Vaulting Apple Pay is ONLY permitted when the customer explicitly consents to
+// future merchant-initiated transactions during checkout. Display a billing
+// agreement disclosure before the NFC reader is presented — NOT after the tap.
+//
+// Do NOT use a vaulted PM when the customer is present and able to authorize
+// in real-time — Braintree policy states this will result in declines.
+//
+// Recommended checkout disclosure (shown before the NFC tap):
+//   "By saving your Apple Pay card, you authorize AudioHound to charge your
+//    stored payment method for future subscription renewals. You may cancel
+//    at any time via your account settings."
 
 const gql = (query, variables) =>
   fetch('https://payments.sandbox.braintree-api.com/graphql', {
