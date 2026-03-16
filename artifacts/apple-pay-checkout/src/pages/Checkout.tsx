@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import ApplePaySheet from "@/components/ApplePaySheet";
 import DevPanel from "@/components/DevPanel";
 import OrderSummary from "@/components/OrderSummary";
@@ -16,7 +16,7 @@ const CART_ITEMS = [
 
 const TAX_RATE = 0.0875;
 
-export const APPLECAREPLUS = {
+const APPLECAREPLUS = {
   name: "AppleCare+ for AirPods Pro",
   description: "Accidental damage coverage, priority support, and battery service.",
   trialAmount: "0.00",
@@ -35,6 +35,9 @@ export default function Checkout() {
   const [devPanelOpen, setDevPanelOpen] = useState(true);
   const [currentStep, setCurrentStep] = useState<string>("idle");
   const [sheetMode, setSheetMode] = useState<SheetMode>("onetime");
+  const [manualPayStatus, setManualPayStatus] = useState<"idle" | "processing" | "confirmed">("idle");
+  const [manualSubOffer, setManualSubOffer] = useState<"hidden" | "visible" | "dismissed">("hidden");
+  const manualTxId = useRef("SIM-" + Math.random().toString(36).slice(2, 10).toUpperCase()).current;
 
   const subtotal = CART_ITEMS.reduce((sum, item) => sum + item.price * item.qty, 0);
   const tax = subtotal * TAX_RATE;
@@ -46,6 +49,16 @@ export default function Checkout() {
     setSubStatus("none");
     setCurrentStep("idle");
     setShowSheet(false);
+    setManualPayStatus("idle");
+    setManualSubOffer("hidden");
+  };
+
+  const handleManualPay = () => {
+    setManualPayStatus("processing");
+    setTimeout(() => {
+      setManualPayStatus("confirmed");
+      setTimeout(() => setManualSubOffer("visible"), 700);
+    }, 1600);
   };
 
   const handleApplePayClick = () => {
@@ -98,6 +111,8 @@ export default function Checkout() {
     setPaymentStatus("idle");
     setSubStatus("none");
     setCurrentStep("idle");
+    setManualPayStatus("idle");
+    setManualSubOffer("hidden");
   };
 
   const devMode: "onetime" | "recurring" | "combined" =
@@ -355,7 +370,7 @@ export default function Checkout() {
             )}
 
             {/* Divider */}
-            {!isSuccess && (
+            {!isSuccess && manualPayStatus === "idle" && (
               <div className="flex items-center gap-4">
                 <div className="flex-1 h-px bg-gray-200"></div>
                 <span className="text-xs text-gray-400 font-medium">or continue below</span>
@@ -364,7 +379,7 @@ export default function Checkout() {
             )}
 
             {/* Shipping */}
-            {!isSuccess && (
+            {!isSuccess && manualPayStatus === "idle" && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">Shipping Information</h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -397,7 +412,7 @@ export default function Checkout() {
             )}
 
             {/* Payment */}
-            {!isSuccess && (
+            {!isSuccess && manualPayStatus === "idle" && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">Payment Method</h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -414,8 +429,118 @@ export default function Checkout() {
                     <input className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 bg-gray-50 text-gray-900 font-mono" placeholder="•••" />
                   </div>
                 </div>
-                <button className="mt-4 w-full py-3 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.99] transition-all">
+                <button
+                  onClick={handleManualPay}
+                  className="mt-4 w-full py-3 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.99] transition-all"
+                >
                   Pay ${total.toFixed(2)}
+                </button>
+              </div>
+            )}
+
+            {/* Manual pay: processing spinner */}
+            {manualPayStatus === "processing" && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+                <div className="w-12 h-12 mx-auto mb-4 relative">
+                  <div className="w-12 h-12 rounded-full border-2 border-blue-100 border-t-blue-600 animate-spin absolute inset-0" />
+                </div>
+                <p className="text-sm font-medium text-gray-900">Processing payment…</p>
+                <p className="text-xs text-gray-400 mt-1">Contacting issuing bank</p>
+              </div>
+            )}
+
+            {/* Manual pay: order confirmed */}
+            {manualPayStatus === "confirmed" && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="h-1.5 bg-gradient-to-r from-green-400 to-emerald-500 rounded-t-2xl" />
+                <div className="p-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center shrink-0">
+                      <svg viewBox="0 0 24 24" className="w-6 h-6 text-green-500 fill-none stroke-current stroke-2" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-base font-semibold text-gray-900 mb-0.5">Order Confirmed</h3>
+                      <p className="text-xs text-gray-400 mb-4">
+                        Transaction ID:{" "}
+                        <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">{manualTxId}</span>
+                      </p>
+                      <div className="space-y-2 border-t border-gray-100 pt-3">
+                        {CART_ITEMS.map((item) => (
+                          <div key={item.id} className="flex items-center justify-between text-sm">
+                            <span className="text-gray-700">{item.image} {item.name}</span>
+                            <span className="text-gray-900 font-medium">${item.price.toFixed(2)}</span>
+                          </div>
+                        ))}
+                        <div className="flex justify-between text-xs text-gray-400 border-t border-gray-100 pt-2">
+                          <span>Tax (8.75%)</span>
+                          <span>${tax.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-semibold text-gray-900">
+                          <span>Total charged</span>
+                          <span>${total.toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-4">
+                        A receipt has been sent to <span className="text-gray-600">john@example.com</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Manual pay: subscription upsell */}
+            {manualPayStatus === "confirmed" && manualSubOffer === "visible" && (
+              <div className="bg-white rounded-2xl shadow-sm border-2 border-blue-100 p-6 relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-t-2xl" />
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-2xl shrink-0 mt-0.5">
+                    {APPLECAREPLUS.emoji}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="text-base font-semibold text-gray-900">{APPLECAREPLUS.name}</h3>
+                      <span className="text-[10px] bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">OFFER</span>
+                    </div>
+                    <p className="text-sm text-gray-500 mb-3">{APPLECAREPLUS.description}</p>
+                    <div className="bg-gray-50 rounded-xl p-3 mb-3 grid grid-cols-2 gap-3">
+                      <div className="text-center">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">First month</p>
+                        <p className="text-lg font-bold text-green-600">Free</p>
+                      </div>
+                      <div className="text-center border-l border-gray-200">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Then</p>
+                        <p className="text-lg font-bold text-gray-900">${APPLECAREPLUS.regularAmount}<span className="text-xs font-normal text-gray-400">/{APPLECAREPLUS.interval}</span></p>
+                      </div>
+                    </div>
+                    <button
+                      className="w-full py-3 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.99] transition-all"
+                      onClick={() => {}}
+                    >
+                      Add AppleCare+ — Free for 1 Month
+                    </button>
+                    <p className="text-center text-xs text-gray-400 mt-2">Cancel anytime · no commitment</p>
+                    <button
+                      onClick={() => setManualSubOffer("dismissed")}
+                      className="mt-2 w-full text-xs text-gray-400 hover:text-gray-600 transition-colors py-1"
+                    >
+                      No thanks
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Manual pay: reset */}
+            {manualPayStatus === "confirmed" && (manualSubOffer === "dismissed" || manualSubOffer === "visible") && (
+              <div className="text-center">
+                <button
+                  onClick={handleReset}
+                  className="text-sm text-blue-600 hover:text-blue-700 font-medium underline underline-offset-2"
+                >
+                  Reset simulation
                 </button>
               </div>
             )}
