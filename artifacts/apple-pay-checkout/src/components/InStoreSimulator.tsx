@@ -15,6 +15,8 @@ type TerminalStep =
   | "sub_authorizing"
   | "complete";
 
+export type InStoreProvider = "stripe" | "braintree";
+
 interface StepMeta {
   screen: React.ReactNode;
   indicator: string;
@@ -28,7 +30,7 @@ const TOTAL = "$313.20";
 const SUB_NAME = "AudioHound Pro";
 const SUB_PRICE = "$9.99/mo";
 
-function TerminalScreen({ step, sessionMode }: { step: TerminalStep; sessionMode: SessionMode }) {
+function TerminalScreen({ step, sessionMode, provider }: { step: TerminalStep; sessionMode: SessionMode; provider: InStoreProvider }) {
   const isApproved = step === "purchase_approved" || step === "complete";
   const isSub = step === "upsell_prompt" || step === "upsell_processing" || step === "sub_authorizing";
 
@@ -89,7 +91,9 @@ function TerminalScreen({ step, sessionMode }: { step: TerminalStep; sessionMode
         <div className="w-6 h-6 border-2 border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin" />
         <p className="text-xs font-semibold text-indigo-300 mt-1">Vaulting Card…</p>
         <p className="text-[10px] text-white/40 text-center leading-relaxed">
-          Stripe stores a card_present PM via setup_future_usage
+          {provider === "stripe"
+            ? "Stripe stores a card_present PM via setup_future_usage: 'off_session'"
+            : "Braintree vaults via vaultPaymentMethodAfterTransacting: ON_SUCCESSFUL_TRANSACTION"}
         </p>
       </div>
     );
@@ -174,7 +178,7 @@ function TerminalScreen({ step, sessionMode }: { step: TerminalStep; sessionMode
   return null;
 }
 
-function P400Terminal({ step, sessionMode }: { step: TerminalStep; sessionMode: SessionMode }) {
+function P400Terminal({ step, sessionMode, provider }: { step: TerminalStep; sessionMode: SessionMode; provider: InStoreProvider }) {
   return (
     <div className="flex flex-col items-center">
       <div
@@ -211,7 +215,7 @@ function P400Terminal({ step, sessionMode }: { step: TerminalStep; sessionMode: 
             minHeight: 160,
           }}
         >
-          <TerminalScreen step={step} sessionMode={sessionMode} />
+          <TerminalScreen step={step} sessionMode={sessionMode} provider={provider} />
         </div>
 
         {/* NFC area */}
@@ -484,9 +488,11 @@ const ONE_SESSION_STEPS: { step: TerminalStep; label: string; desc: string }[] =
 
 interface Props {
   onStepChange?: (step: string) => void;
+  provider: InStoreProvider;
+  onProviderChange: (p: InStoreProvider) => void;
 }
 
-export default function InStoreSimulator({ onStepChange }: Props) {
+export default function InStoreSimulator({ onStepChange, provider, onProviderChange }: Props) {
   const [sessionMode, setSessionMode] = useState<SessionMode>("one-session");
   const [stepIndex, setStepIndex] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -534,32 +540,58 @@ export default function InStoreSimulator({ onStepChange }: Props) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-base">🖥️</span>
-          <span className="text-sm font-semibold text-gray-900">In-Store · Ingenico P400</span>
-          <span className="text-[10px] font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">NFC / Tap to Pay</span>
+      <div className="px-5 py-4 border-b border-gray-100 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-base">🖥️</span>
+            <span className="text-sm font-semibold text-gray-900">In-Store · Ingenico P400</span>
+            <span className="text-[10px] font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">NFC / Tap to Pay</span>
+          </div>
+          {/* Session sub-toggle */}
+          <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 shrink-0">
+            {(["one-session", "two-session"] as SessionMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => handleSessionChange(m)}
+                className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-all ${
+                  sessionMode === m ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                {m === "one-session" ? "1-Session" : "2-Session"}
+              </button>
+            ))}
+          </div>
         </div>
-        {/* Session sub-toggle */}
-        <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-          {(["one-session", "two-session"] as SessionMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => handleSessionChange(m)}
-              className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-all ${
-                sessionMode === m ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-600"
-              }`}
-            >
-              {m === "one-session" ? "1-Session" : "2-Session"}
-            </button>
-          ))}
+        {/* Provider toggle */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] text-gray-400 font-medium shrink-0">Provider:</span>
+          <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
+            {(["stripe", "braintree"] as InStoreProvider[]).map((p) => (
+              <button
+                key={p}
+                onClick={() => onProviderChange(p)}
+                className={`text-[10px] font-semibold px-2.5 py-1 rounded-md transition-all ${
+                  provider === p ? "bg-white text-gray-900 shadow-sm" : "text-gray-400 hover:text-gray-600"
+                }`}
+              >
+                {p === "stripe" ? "Stripe Terminal" : "Braintree / PayPal"}
+              </button>
+            ))}
+          </div>
+          <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+            provider === "stripe"
+              ? "bg-violet-50 text-violet-600 border-violet-200"
+              : "bg-sky-50 text-sky-600 border-sky-200"
+          }`}>
+            {provider === "stripe" ? "Stripe Terminal JS SDK" : "Braintree GraphQL API"}
+          </span>
         </div>
       </div>
 
       <div className="p-5">
         {/* Main visual area */}
         <div className="flex items-end justify-center gap-8 mb-6">
-          <P400Terminal step={current.step} sessionMode={sessionMode} />
+          <P400Terminal step={current.step} sessionMode={sessionMode} provider={provider} />
           <PhoneMockup visible={phoneVisible} isSubscription={isSubAuth || sessionMode === "one-session"} step={current.step} />
         </div>
 
@@ -655,19 +687,21 @@ export default function InStoreSimulator({ onStepChange }: Props) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
               </svg>
               <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">
-                card_present limitations for recurring billing
+                {provider === "stripe" ? "card_present limitations for recurring billing" : "Vaulted digital wallet limitations"}
               </p>
               <a
-                href="https://docs.stripe.com/terminal/features/saving-payment-details/overview"
+                href={provider === "stripe"
+                  ? "https://docs.stripe.com/terminal/features/saving-payment-details/overview"
+                  : "https://developer.paypal.com/braintree/in-person/guides/vaulting-and-customers/"}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="ml-auto text-[10px] text-amber-600 hover:text-amber-800 underline underline-offset-2 shrink-0"
               >
-                Stripe docs ↗
+                {provider === "stripe" ? "Stripe docs ↗" : "Braintree docs ↗"}
               </a>
             </div>
             <ul className="space-y-2">
-              {[
+              {(provider === "stripe" ? [
                 {
                   label: "card_present ≠ card",
                   detail: "The vaulted PaymentMethod is type card_present. Stripe Subscriptions require a card or generated_card PM — Stripe auto-generates one via network tokenization if the card network supports it.",
@@ -688,7 +722,28 @@ export default function InStoreSimulator({ onStepChange }: Props) {
                   label: "Test before going live",
                   detail: "Use Stripe's Terminal simulator (simulated: true) and confirm a generated_card is attached to the Customer after payment before building subscription activation logic.",
                 },
-              ].map(({ label, detail }) => (
+              ] : [
+                {
+                  label: "MIT flag auto-applied",
+                  detail: "When Apple Pay, Google Pay, or Samsung Pay are tapped on a reader and vaulted, subsequent chargePaymentMethod calls automatically receive a merchant-initiated transaction (MIT) flag.",
+                },
+                {
+                  label: "24-hour authorization expiry",
+                  detail: "Vaulted digital-wallet payment methods carry a 24-hour auth window. Parse authorizationExpiresAt from the API response and build re-auth logic for any deferred capture flows.",
+                },
+                {
+                  label: "Card-not-present pricing for future charges",
+                  detail: "Future charges against a Multi-Use PaymentMethod are processed as card-not-present and receive CNP interchange rates — not the lower card-present rates from the original tap.",
+                },
+                {
+                  label: "paymentMethodId is unique per vault request",
+                  detail: "Each vaulting event produces a new paymentMethodId token. Do not use it for analytics or deduplication. Use uniqueNumberIdentifier (stable per card number) for analytics instead.",
+                },
+                {
+                  label: "Apple Pay at reader yields DPAN, not MPAN",
+                  detail: "In-store NFC tap issues a Device PAN (one-time cryptogram per tap). Online Apple Pay with recurringPaymentRequest can yield a Merchant PAN — a persistent token better suited for subscriptions.",
+                },
+              ]).map(({ label, detail }) => (
                 <li key={label} className="flex gap-2">
                   <span className="text-amber-500 mt-0.5 shrink-0 text-[11px]">▸</span>
                   <div>
@@ -705,9 +760,13 @@ export default function InStoreSimulator({ onStepChange }: Props) {
       {/* Info footer */}
       <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-2">
         <span className="text-[10px] text-gray-400">
-          {sessionMode === "two-session"
-            ? "Two terminal.collectPaymentMethod calls — one per NFC tap. The subscription NFC tap triggers a second Apple Pay auth on the customer's device."
-            : "One terminal.collectPaymentMethod call with setup_future_usage: 'off_session' — single NFC tap captures payment and vaults the card for server-side subscription billing."}
+          {provider === "stripe"
+            ? sessionMode === "two-session"
+              ? "Two terminal.collectPaymentMethod calls — one per NFC tap. The subscription NFC tap triggers a second Apple Pay auth on the customer's device."
+              : "One terminal.collectPaymentMethod call with setup_future_usage: 'off_session' — single NFC tap captures payment and vaults the card for server-side subscription billing."
+            : sessionMode === "two-session"
+              ? "Two requestChargeFromInStoreReader calls via Braintree GraphQL API. Poll the inStoreContextPayload until COMPLETE, then use chargePaymentMethod(paymentMethodId) to activate the subscription."
+              : "One requestChargeFromInStoreReader with vaultPaymentMethodAfterTransacting: ON_SUCCESSFUL_TRANSACTION — single NFC tap charges the cart and vaults the card. Server immediately calls chargePaymentMethod(paymentMethodId) to activate AudioHound Pro."}
         </span>
       </div>
     </div>
