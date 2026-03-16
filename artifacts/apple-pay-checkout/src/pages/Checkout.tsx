@@ -151,7 +151,19 @@ export default function Checkout() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Form + Apple Pay */}
           <div className="lg:col-span-2 space-y-4">
-            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Digital Payments Simulator</h1>
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Digital Payments Simulator</h1>
+              <button
+                onClick={handleReset}
+                disabled={paymentStatus === "idle" && manualPayStatus === "idle"}
+                className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed border border-gray-200 hover:border-gray-400 disabled:hover:border-gray-200 bg-white rounded-lg px-3 py-1.5 transition-all"
+              >
+                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-current stroke-2" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Reset
+              </button>
+            </div>
 
             {/* Flow mode switcher */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-1.5 flex gap-1">
