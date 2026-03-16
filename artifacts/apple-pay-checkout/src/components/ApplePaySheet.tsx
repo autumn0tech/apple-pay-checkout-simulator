@@ -252,7 +252,7 @@ export default function ApplePaySheet({
                   </div>
 
                   <p className="text-[10px] text-gray-500 leading-relaxed mt-3 px-1">
-                    Your purchase includes AppleCare+. $0.00 today, then ${recurringDetails.regularAmount}/{recurringDetails.interval} after your free month until cancelled.{" "}
+                    Your purchase includes AudioHound Pro. $0.00 today, then ${recurringDetails.regularAmount}/{recurringDetails.interval} after your free month until cancelled.{" "}
                     <span className="text-blue-400 underline cursor-pointer">Manage at yourdomain.com</span>.
                   </p>
                 </div>
@@ -354,7 +354,7 @@ export default function ApplePaySheet({
             </p>
             <p className="text-gray-400 text-sm mt-1">
               {isCombined
-                ? `$${total.toFixed(2)} charged · AppleCare+ trial started`
+                ? `$${total.toFixed(2)} charged · AudioHound Pro trial started`
                 : isRecurring
                 ? "Recurring token saved · Free for 30 days"
                 : `$${total.toFixed(2)} authorized`}

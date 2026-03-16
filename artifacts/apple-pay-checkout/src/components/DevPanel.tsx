@@ -3,10 +3,10 @@ import { useState } from "react";
 interface DevPanelProps {
   currentStep: string;
   total: number;
-  devMode?: "onetime" | "recurring";
+  devMode?: "onetime" | "recurring" | "combined";
 }
 
-type Tab = "flow" | "setup" | "events" | "recurring";
+type Tab = "flow" | "setup" | "events" | "recurring" | "combined";
 
 const ALL_STEPS: Record<string, { label: string; color: string; desc: string }> = {
   idle: { label: "Idle", color: "text-gray-400", desc: "Waiting for user to tap Apple Pay button" },
@@ -18,6 +18,7 @@ const ALL_STEPS: Record<string, { label: string; color: string; desc: string }> 
   recurringSheetPresented: { label: "Recurring Sheet", color: "text-purple-400", desc: "Shows recurringPaymentRequest billing UI" },
   recurringPaymentAuthorized: { label: "Recurring Token", color: "text-purple-400", desc: "Encrypted recurring token received from Apple" },
   recurringAuthorized: { label: "Subscription Active", color: "text-green-400", desc: "Token stored, billing agreement created" },
+  combinedAuthorized: { label: "Payment + Subscription Active", color: "text-indigo-400", desc: "One session handled both — payment + subscription" },
 };
 
 const SETUP_CODE = `<!-- 1. Add Apple Pay SDK to <head> -->
@@ -28,23 +29,27 @@ const SETUP_CODE = `<!-- 1. Add Apple Pay SDK to <head> -->
 <script>
 if (window.ApplePaySession?.canMakePayments()) {
   document.getElementById('apple-pay-btn').style.display = 'block';
-  document.getElementById('apple-pay-sub-btn').style.display = 'block';
 }
 </script>
 
-<!-- 3. One-time purchase button -->
-<apple-pay-button id="apple-pay-btn"
+<!-- Two-Session: separate buy + subscribe buttons -->
+<apple-pay-button id="apple-pay-buy-btn"
   buttonstyle="black" type="buy"
   locale="en-US" onclick="startPurchaseSession()">
 </apple-pay-button>
 
-<!-- 4. Subscription button (shown after purchase) -->
 <apple-pay-button id="apple-pay-sub-btn"
   buttonstyle="black" type="subscribe"
   locale="en-US" onclick="startSubscriptionSession()">
+</apple-pay-button>
+
+<!-- One-Session: single button handles both -->
+<apple-pay-button id="apple-pay-combined-btn"
+  buttonstyle="black" type="buy"
+  locale="en-US" onclick="startCombinedSession()">
 </apple-pay-button>`;
 
-const EVENTS_CODE = `// ── ONE-TIME PAYMENT SESSION ──
+const EVENTS_CODE = `// ── TWO-SESSION: STEP 1 — One-Time Payment ──
 function startPurchaseSession() {
   const request = {
     countryCode: 'US',
@@ -89,37 +94,26 @@ function startPurchaseSession() {
   session.begin();
 }`;
 
-const RECURRING_CODE = `// ── RECURRING SUBSCRIPTION SESSION ──
+const RECURRING_CODE = `// ── TWO-SESSION: STEP 2 — Recurring Subscription ──
 // Called AFTER the one-time payment succeeds
-// Uses ApplePayRecurringPaymentRequest (API v14+)
 function startSubscriptionSession() {
   const request = {
     countryCode: 'US',
     currencyCode: 'USD',
     merchantCapabilities: ['supports3DS'],
     supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
-
-    // For subscriptions, total reflects only the TRIAL amount
     total: {
-      label: 'AppleCare+ for AirPods Pro',
-      amount: '0.00',  // ← $0 today (trial period)
+      label: 'AudioHound Pro',
+      amount: '0.00',
       type: 'final'
     },
     lineItems: [
-      {
-        label: 'First month free',
-        amount: '0.00',
-        type: 'final'
-      }
+      { label: 'First month free', amount: '0.00', type: 'final' }
     ],
-
-    // ── The key: recurringPaymentRequest ──
     recurringPaymentRequest: {
-      paymentDescription: 'AppleCare+ for AirPods Pro',
-
-      // Trial billing (optional — remove if no trial)
+      paymentDescription: 'AudioHound Pro',
       trialBilling: {
-        label: 'AppleCare+ Trial',
+        label: 'AudioHound Pro Trial',
         amount: '0.00',
         type: 'final',
         recurringPaymentIntervalUnit:  'month',
@@ -129,11 +123,9 @@ function startSubscriptionSession() {
           Date.now() + 30 * 24 * 60 * 60 * 1000
         ).toISOString()
       },
-
-      // Regular billing (required)
       regularBilling: {
-        label: 'AppleCare+ Monthly',
-        amount: '3.99',
+        label: 'AudioHound Pro Monthly',
+        amount: '9.99',
         type: 'final',
         recurringPaymentIntervalUnit:  'month',
         recurringPaymentIntervalCount: 1,
@@ -141,28 +133,18 @@ function startSubscriptionSession() {
           Date.now() + 30 * 24 * 60 * 60 * 1000
         ).toISOString()
       },
-
-      // Shown to user as the "billing agreement" in the sheet
       billingAgreement:
         'You will be charged $0.00 today. After your free trial, ' +
-        '$3.99/month will be billed until cancelled.',
-
-      // Where user can manage their subscription
+        '$9.99/month will be billed until cancelled.',
       managementURL: 'https://yourdomain.com/subscriptions',
-
-      // Apple calls this URL when the user's card changes
-      // so you can update the stored token without re-auth
       tokenNotificationURL:
         'https://yourdomain.com/api/apple-pay/token-update'
     },
-
-    // Subscriptions don't need shipping address
     requiredBillingContactFields: ['email']
   };
 
   const session = new ApplePaySession(14, request);
 
-  // Merchant validation — same as one-time
   session.onvalidatemerchant = async (event) => {
     const res = await fetch('/api/apple-pay/validate', {
       method: 'POST',
@@ -172,43 +154,139 @@ function startSubscriptionSession() {
     session.completeMerchantValidation(await res.json());
   };
 
-  // Recurring token received — DIFFERENT from one-time token
-  // This token must be stored for future charges
   session.onpaymentauthorized = async (event) => {
-    const { token } = event.payment;
-    // token.paymentData   ← encrypted payment data
-    // token.paymentMethod ← card info (displayName, network, type)
-
     const res = await fetch('/api/apple-pay/subscribe', {
       method: 'POST',
       body: JSON.stringify({
-        token,
-        plan: 'applecare_plus_monthly',
+        token: event.payment.token,
+        plan: 'audiohound_pro_monthly',
         email: event.payment.billingContact?.emailAddress
       }),
       headers: { 'Content-Type': 'application/json' }
     });
     const { success, subscriptionId } = await res.json();
+    session.completePayment(
+      success ? ApplePaySession.STATUS_SUCCESS : ApplePaySession.STATUS_FAILURE
+    );
+  };
+
+  session.oncancel = () => console.log('Subscription cancelled');
+  session.begin();
+}`;
+
+const COMBINED_CODE = `// ── ONE-SESSION FLOW ──
+// AudioHound Pro is a SKU at checkout — purchase + subscription
+// in a single ApplePaySession with recurringPaymentRequest
+function startCombinedSession() {
+  const request = {
+    countryCode: 'US',
+    currencyCode: 'USD',
+    merchantCapabilities: ['supports3DS'],
+    supportedNetworks: ['visa', 'masterCard', 'amex', 'discover'],
+
+    // Total = product charge only (subscription trial is $0 today)
+    total: {
+      label: 'Apple Demo Store',
+      amount: '313.20',
+      type: 'final'
+    },
+    lineItems: [
+      { label: 'AirPods Pro',                amount: '249.00' },
+      { label: 'MagSafe Charger',            amount: '39.00'  },
+      { label: 'Tax',                        amount: '25.20'  },
+      // ── Subscription shown as a line-item SKU ──
+      { label: 'AudioHound Pro (1st month free)', amount: '0.00', type: 'final' }
+    ],
+
+    // ── Subscription set up in the SAME session ──
+    // User authorizes both purchase AND recurring billing in one tap
+    recurringPaymentRequest: {
+      paymentDescription: 'AudioHound Pro',
+
+      trialBilling: {
+        label: 'AudioHound Pro Trial',
+        amount: '0.00',
+        type: 'final',
+        recurringPaymentIntervalUnit:  'month',
+        recurringPaymentIntervalCount: 1,
+        recurringPaymentStartDate:     new Date().toISOString(),
+        recurringPaymentEndDate:       new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        ).toISOString()
+      },
+      regularBilling: {
+        label: 'AudioHound Pro Monthly',
+        amount: '9.99',
+        type: 'final',
+        recurringPaymentIntervalUnit:  'month',
+        recurringPaymentIntervalCount: 1,
+        recurringPaymentStartDate:     new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        ).toISOString()
+      },
+
+      billingAgreement:
+        'Your purchase includes AudioHound Pro. $0.00 for the first month, ' +
+        'then $9.99/month billed automatically until cancelled.',
+
+      managementURL: 'https://yourdomain.com/subscriptions',
+      tokenNotificationURL:
+        'https://yourdomain.com/api/apple-pay/token-update'
+    },
+
+    requiredShippingContactFields: ['postalAddress', 'email'],
+    requiredBillingContactFields:  ['postalAddress']
+  };
+
+  const session = new ApplePaySession(14, request);
+
+  session.onvalidatemerchant = async (event) => {
+    const res = await fetch('/api/apple-pay/validate', {
+      method: 'POST',
+      body: JSON.stringify({ validationURL: event.validationURL }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    session.completeMerchantValidation(await res.json());
+  };
+
+  // Single handler — token covers both the purchase and subscription
+  session.onpaymentauthorized = async (event) => {
+    const { token } = event.payment;
+    // token.paymentData   ← encrypted data for the one-time charge
+    // token.paymentMethod ← card info (displayName, network, type)
+    // Apple stores the recurring billing agreement internally;
+    // your backend charges the product amount and activates the plan.
+
+    const res = await fetch('/api/apple-pay/purchase-with-subscription', {
+      method: 'POST',
+      body: JSON.stringify({
+        token,
+        plan: 'audiohound_pro_monthly',
+        amount: '313.20',
+        email: event.payment.billingContact?.emailAddress
+      }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const { success } = await res.json();
 
     session.completePayment(
       success ? ApplePaySession.STATUS_SUCCESS : ApplePaySession.STATUS_FAILURE
     );
-    if (success) showSubscriptionConfirmation(subscriptionId);
   };
 
-  session.oncancel = () => console.log('Subscription cancelled by user');
+  session.oncancel = () => console.log('Session cancelled by user');
   session.begin();
 }
 
-// ── BACKEND: Token update webhook ──
-// Apple calls tokenNotificationURL when card changes (lost, expired, etc.)
-// POST /api/apple-pay/token-update
-app.post('/api/apple-pay/token-update', async (req, res) => {
-  const { token } = req.body;
-  // 1. Decrypt token.paymentData with your PSP
-  // 2. Update stored subscription payment method
-  // 3. Respond 200 OK to Apple within 30 seconds
-  res.sendStatus(200);
+// ── BACKEND endpoint ──
+// POST /api/apple-pay/purchase-with-subscription
+app.post('/api/apple-pay/purchase-with-subscription', async (req, res) => {
+  const { token, plan, amount, email } = req.body;
+  // 1. Decrypt token.paymentData via your PSP (Stripe, Braintree, etc.)
+  // 2. Charge the one-time amount
+  // 3. Activate the subscription plan for this user
+  // 4. Store the plan + email for future billing cycles
+  res.json({ success: true });
 });`;
 
 function CodeBlock({ code }: { code: string }) {
@@ -259,17 +337,46 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
     { key: "recurringAuthorized",        label: "5. Subscription active",   detail: "Token stored, tokenNotificationURL registered" },
   ];
 
-  const activeFlow = devMode === "recurring" ? RECURRING_FLOW : ONE_TIME_FLOW;
+  const COMBINED_FLOW = [
+    { key: "idle",                label: "1. Button check",        detail: "ApplePaySession.canMakePayments()" },
+    { key: "validateMerchant",    label: "2. Validate merchant",   detail: "onvalidatemerchant → POST /api/validate" },
+    { key: "shippingMethodSelected", label: "3. Combined sheet",   detail: "Shows products + subscription SKU in one sheet" },
+    { key: "paymentAuthorized",   label: "4. Single token",        detail: "onpaymentauthorized → POST /api/purchase-with-subscription" },
+    { key: "combinedAuthorized",  label: "5. Both complete",       detail: "Payment charged + subscription activated" },
+  ];
+
+  const activeFlow =
+    devMode === "recurring" ? RECURRING_FLOW :
+    devMode === "combined"  ? COMBINED_FLOW  : ONE_TIME_FLOW;
+
   const stepKeys = activeFlow.map((s) => s.key);
   const currentIndex = stepKeys.indexOf(currentStep);
 
   const isRecurringStep = currentStep.startsWith("recurring");
+  const isCombinedStep = devMode === "combined";
+
   const dotColor =
-    currentStep === "authorized" || currentStep === "recurringAuthorized" ? "bg-green-400" :
+    currentStep === "authorized" || currentStep === "recurringAuthorized" || currentStep === "combinedAuthorized" ? "bg-green-400" :
+    isCombinedStep && currentStep !== "idle" ? "bg-indigo-400 animate-pulse" :
     isRecurringStep ? "bg-purple-400 animate-pulse" :
     currentStep === "idle" ? "bg-gray-600" : "bg-yellow-400 animate-pulse";
 
-  const TABS: [Tab, string][] = [["flow", "Flow"], ["setup", "HTML"], ["events", "One-Time"], ["recurring", "Recurring"]];
+  const TABS: [Tab, string][] = [
+    ["flow", "Flow"],
+    ["setup", "HTML"],
+    ["events", "Two-Session"],
+    ["recurring", "Recurring"],
+    ["combined", "One-Session"],
+  ];
+
+  const activeTabColor = (id: Tab) => {
+    if (id === "combined") return "text-indigo-400 border-b-2 border-indigo-400 bg-gray-900/50";
+    if (id === "recurring") return "text-purple-400 border-b-2 border-purple-400 bg-gray-900/50";
+    return "text-blue-400 border-b-2 border-blue-400 bg-gray-900/50";
+  };
+
+  const flowColor = devMode === "combined" ? "bg-indigo-500" : devMode === "recurring" ? "bg-purple-500" : "bg-blue-500";
+  const flowText = devMode === "combined" ? "text-indigo-300" : devMode === "recurring" ? "text-purple-300" : "text-blue-300";
 
   return (
     <div className="bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden text-sm">
@@ -283,22 +390,21 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
           {devMode === "recurring" && (
             <span className="text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30 px-1.5 py-0.5 rounded-full font-semibold">RECURRING</span>
           )}
+          {devMode === "combined" && (
+            <span className="text-[9px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded-full font-semibold">ONE-SESSION</span>
+          )}
           <span className="text-[10px] text-gray-500 font-mono">${total.toFixed(2)} USD</span>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-800">
+      <div className="flex border-b border-gray-800 overflow-x-auto">
         {TABS.map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`flex-1 py-2.5 text-[10px] font-semibold transition-colors ${
-              tab === id
-                ? id === "recurring"
-                  ? "text-purple-400 border-b-2 border-purple-400 bg-gray-900/50"
-                  : "text-blue-400 border-b-2 border-blue-400 bg-gray-900/50"
-                : "text-gray-500 hover:text-gray-300"
+            className={`flex-1 py-2.5 text-[10px] font-semibold transition-colors whitespace-nowrap px-1 ${
+              tab === id ? activeTabColor(id) : "text-gray-500 hover:text-gray-300"
             }`}
           >
             {label}
@@ -307,13 +413,16 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
       </div>
 
       <div className="p-3">
+        {/* FLOW TAB */}
         {tab === "flow" && (
           <div className="space-y-1">
-            {/* Mode switcher label */}
             <div className="flex items-center gap-2 mb-3 px-1">
               <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium">
-                {devMode === "recurring" ? "Recurring flow" : "One-time flow"} — interact to see live updates
+                {devMode === "combined" ? "One-session flow" : devMode === "recurring" ? "Recurring flow" : "One-time flow"} — interact to see live updates
               </p>
+              {devMode === "combined" && (
+                <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full font-semibold border border-indigo-500/30">COMBINED</span>
+              )}
               {devMode === "recurring" && (
                 <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full font-semibold border border-purple-500/30">STEP 2</span>
               )}
@@ -322,16 +431,23 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
             {activeFlow.map((s, i) => {
               const isDone = i < currentIndex;
               const isActive = s.key === currentStep;
+              const activeBg = devMode === "combined"
+                ? "bg-indigo-500/10 border border-indigo-500/30"
+                : devMode === "recurring"
+                ? "bg-purple-500/10 border border-purple-500/30"
+                : "bg-blue-500/10 border border-blue-500/30";
+              const activeCircle = devMode === "combined"
+                ? "bg-indigo-500 text-white animate-pulse"
+                : devMode === "recurring"
+                ? "bg-purple-500 text-white animate-pulse"
+                : "bg-blue-500 text-white animate-pulse";
+
               return (
                 <div key={s.key} className={`flex items-start gap-3 p-2.5 rounded-xl transition-all ${
-                  isActive
-                    ? devMode === "recurring" ? "bg-purple-500/10 border border-purple-500/30" : "bg-blue-500/10 border border-blue-500/30"
-                    : isDone ? "opacity-60" : "opacity-40"
+                  isActive ? activeBg : isDone ? "opacity-60" : "opacity-40"
                 }`}>
                   <div className={`w-5 h-5 rounded-full shrink-0 mt-0.5 flex items-center justify-center text-[10px] font-bold ${
-                    isDone ? "bg-green-500 text-white" :
-                    isActive ? (devMode === "recurring" ? "bg-purple-500 text-white animate-pulse" : "bg-blue-500 text-white animate-pulse") :
-                    "bg-gray-800 text-gray-500"
+                    isDone ? "bg-green-500 text-white" : isActive ? activeCircle : "bg-gray-800 text-gray-500"
                   }`}>
                     {isDone ? "✓" : i + 1}
                   </div>
@@ -347,7 +463,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
               <p className="text-[10px] text-gray-500 font-mono leading-relaxed">
                 <span className="text-gray-600">// Current event</span><br />
                 <span className="text-yellow-300">session.</span>
-                <span className={devMode === "recurring" ? "text-purple-300" : "text-blue-300"}>
+                <span className={flowText}>
                   {currentStep === "idle" ? "canMakePayments"
                     : currentStep === "validateMerchant" || currentStep === "recurringValidateMerchant" ? "onvalidatemerchant"
                     : currentStep === "shippingMethodSelected" || currentStep === "recurringSheetPresented" ? "onshippingcontactselected"
@@ -359,27 +475,35 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
               <p className="text-[10px] text-gray-600 mt-1.5 italic">{stepInfo.desc}</p>
             </div>
 
-            {/* Explain the two-session model */}
-            {(currentStep === "authorized" || devMode === "recurring") && (
-              <div className="mt-2 p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl">
-                <p className="text-[10px] text-purple-300 font-semibold mb-1">Two-session model (Apple's recommendation)</p>
+            {/* Context callout */}
+            {devMode === "combined" ? (
+              <div className="mt-2 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                <p className="text-[10px] text-indigo-300 font-semibold mb-1">One-session model — subscription as a SKU</p>
                 <p className="text-[10px] text-gray-400 leading-relaxed">
-                  Apple requires a <span className="text-white font-mono">separate</span> ApplePaySession for recurring payments. You cannot combine a one-time payment and a subscription into a single session. After the first session completes successfully, launch a new session with <span className="text-purple-300 font-mono">recurringPaymentRequest</span> populated.
+                  The subscription is presented as a line item at checkout. A single <span className="text-white font-mono">ApplePaySession</span> carries both the one-time total and <span className="text-indigo-300 font-mono">recurringPaymentRequest</span>. The user authorizes both in one tap — ideal when the subscription is part of the initial purchase rather than a post-purchase offer.
+                </p>
+              </div>
+            ) : (currentStep === "authorized" || devMode === "recurring") && (
+              <div className="mt-2 p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                <p className="text-[10px] text-purple-300 font-semibold mb-1">Two-session model (post-purchase upsell)</p>
+                <p className="text-[10px] text-gray-400 leading-relaxed">
+                  After the first session completes, launch a new <span className="text-white font-mono">ApplePaySession</span> with <span className="text-purple-300 font-mono">recurringPaymentRequest</span>. Best for upsells shown after purchase when the user has already committed.
                 </p>
               </div>
             )}
           </div>
         )}
 
+        {/* HTML TAB */}
         {tab === "setup" && (
           <div className="space-y-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">HTML — both button types</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">HTML — button setup for both flows</p>
             <CodeBlock code={SETUP_CODE} />
             <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
-              <p className="text-[10px] text-yellow-300/80 font-medium mb-1">Button type matters for subscriptions</p>
+              <p className="text-[10px] text-yellow-300/80 font-medium mb-1">Button type matters</p>
               <ul className="text-[10px] text-yellow-200/60 space-y-0.5 list-disc list-inside">
-                <li>Use <span className="font-mono">type="buy"</span> for one-time purchases</li>
-                <li>Use <span className="font-mono">type="subscribe"</span> for recurring plans</li>
+                <li>Use <span className="font-mono">type="buy"</span> for one-time purchases and combined flows</li>
+                <li>Use <span className="font-mono">type="subscribe"</span> for standalone subscription sessions</li>
                 <li>Apple may reject apps using the wrong button type</li>
                 <li>Domain must pass Apple Pay domain verification</li>
               </ul>
@@ -387,9 +511,10 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
           </div>
         )}
 
+        {/* TWO-SESSION: ONE-TIME TAB */}
         {tab === "events" && (
           <div className="space-y-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">One-time session · all event handlers</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">Two-session flow · Step 1 — one-time payment</p>
             <CodeBlock code={EVENTS_CODE} />
             <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
               <p className="text-[10px] text-blue-300/80 font-medium mb-2">Required Entitlements</p>
@@ -410,9 +535,10 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
           </div>
         )}
 
+        {/* TWO-SESSION: RECURRING TAB */}
         {tab === "recurring" && (
           <div className="space-y-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">Recurring session · recurringPaymentRequest</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">Two-session flow · Step 2 — recurring session</p>
             <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl mb-2">
               <p className="text-[10px] text-purple-300 font-semibold mb-1">Key API fields (ApplePaySession v14+)</p>
               <div className="space-y-1 mt-1">
@@ -435,9 +561,43 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
               <p className="text-[10px] text-green-300/80 font-semibold mb-1">Token lifecycle</p>
               <ul className="text-[10px] text-green-200/60 space-y-1 list-disc list-inside leading-relaxed">
                 <li>The recurring token is <span className="text-white">not</span> the same as a one-time token — store it separately</li>
-                <li>Apple calls <span className="font-mono">tokenNotificationURL</span> when the user's card is updated (lost, expired) so you can silently update without re-auth</li>
-                <li>Never charge the token server-side without first verifying with your PSP (Stripe, Braintree, Adyen)</li>
-                <li>Respect <span className="font-mono">recurringPaymentStartDate</span> — don't charge before it</li>
+                <li>Apple calls <span className="font-mono">tokenNotificationURL</span> when the user's card is updated so you can silently update without re-auth</li>
+                <li>Never charge the token before <span className="font-mono">recurringPaymentStartDate</span></li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* ONE-SESSION: COMBINED TAB */}
+        {tab === "combined" && (
+          <div className="space-y-2">
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">One-session flow · subscription as a checkout SKU</p>
+            <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl mb-2">
+              <p className="text-[10px] text-indigo-300 font-semibold mb-1">How it differs from the two-session flow</p>
+              <div className="space-y-1.5 mt-1">
+                {[
+                  ["Sessions", "1 — both payment + subscription in one ApplePaySession"],
+                  ["SKU placement", "Subscription appears as a line item at checkout"],
+                  ["User action", "Single tap authorizes both charges"],
+                  ["Token", "One token covers both one-time and recurring"],
+                  ["Best for", "Subscription offered upfront as part of the product"],
+                  ["vs two-session", "Two-session is better for post-purchase upsell conversion"],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex gap-2">
+                    <span className="text-[10px] text-indigo-400 font-mono shrink-0">{k}:</span>
+                    <span className="text-[10px] text-gray-400 leading-relaxed">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <CodeBlock code={COMBINED_CODE} />
+            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+              <p className="text-[10px] text-amber-300/80 font-semibold mb-1">Tradeoffs to consider</p>
+              <ul className="text-[10px] text-amber-200/60 space-y-1 list-disc list-inside leading-relaxed">
+                <li>Subscription conversion may be lower when shown upfront vs. post-purchase</li>
+                <li>Simpler backend — one endpoint handles both charges</li>
+                <li>Users see full recurring terms before authorizing — better transparency</li>
+                <li>No risk of user completing purchase then declining the upsell</li>
               </ul>
             </div>
           </div>

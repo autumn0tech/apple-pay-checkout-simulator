@@ -6,14 +6,26 @@ interface CartItem {
   image: string;
 }
 
+interface SubscriptionSku {
+  name: string;
+  description: string;
+  trialAmount: string;
+  regularAmount: string;
+  interval: string;
+  trialLabel: string;
+  emoji: string;
+  sku: string;
+}
+
 interface OrderSummaryProps {
   items: CartItem[];
   subtotal: number;
   tax: number;
   total: number;
+  subscription?: SubscriptionSku;
 }
 
-export default function OrderSummary({ items, subtotal, tax, total }: OrderSummaryProps) {
+export default function OrderSummary({ items, subtotal, tax, total, subscription }: OrderSummaryProps) {
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
       <h2 className="text-base font-semibold text-gray-900 mb-4">Order Summary</h2>
@@ -31,6 +43,32 @@ export default function OrderSummary({ items, subtotal, tax, total }: OrderSumma
             <p className="text-sm font-semibold text-gray-900 shrink-0">${item.price.toFixed(2)}</p>
           </div>
         ))}
+
+        {/* Subscription SKU — shown only in one-session flow */}
+        {subscription && (
+          <div className="flex items-start gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 -mx-1">
+            <div className="w-12 h-12 bg-white border border-indigo-100 rounded-xl flex items-center justify-center text-2xl shrink-0">
+              {subscription.emoji}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+                <p className="text-sm font-medium text-gray-900 leading-tight">{subscription.name}</p>
+                <span className="text-[9px] font-bold bg-indigo-600 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                  SUBSCRIPTION
+                </span>
+              </div>
+              <p className="text-[10px] text-gray-500 leading-relaxed">{subscription.description}</p>
+              <p className="text-[10px] text-indigo-600 font-semibold mt-1">
+                {subscription.trialLabel} · then ${subscription.regularAmount}/{subscription.interval}
+              </p>
+              <p className="text-[9px] text-gray-400 font-mono mt-0.5">SKU: {subscription.sku}</p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="text-sm font-semibold text-indigo-600">$0.00</p>
+              <p className="text-[9px] text-gray-400 leading-tight">trial</p>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border-t border-gray-100 pt-3 space-y-2">
@@ -46,10 +84,24 @@ export default function OrderSummary({ items, subtotal, tax, total }: OrderSumma
           <span>Tax (8.75%)</span>
           <span>${tax.toFixed(2)}</span>
         </div>
+        {subscription && (
+          <div className="flex justify-between text-sm text-gray-600">
+            <span className="flex items-center gap-1">
+              <span>AudioHound Pro</span>
+              <span className="text-[9px] text-indigo-500 font-semibold">(trial)</span>
+            </span>
+            <span className="text-indigo-600 font-medium">$0.00</span>
+          </div>
+        )}
         <div className="flex justify-between text-base font-bold text-gray-900 pt-2 border-t border-gray-100">
           <span>Total</span>
           <span>${total.toFixed(2)}</span>
         </div>
+        {subscription && (
+          <p className="text-[10px] text-gray-400 leading-relaxed">
+            Subscription billed separately after trial. Cancel anytime.
+          </p>
+        )}
       </div>
 
       <div className="mt-4 flex items-center gap-2 text-xs text-gray-400">

@@ -17,14 +17,14 @@ const CART_ITEMS = [
 const TAX_RATE = 0.0875;
 
 const APPLECAREPLUS = {
-  name: "AppleCare+ for AirPods Pro",
-  description: "Accidental damage coverage, priority support, and battery service.",
+  name: "AudioHound Pro",
+  description: "Unlimited streaming, offline downloads, lossless audio, and priority support.",
   trialAmount: "0.00",
-  regularAmount: "3.99",
+  regularAmount: "9.99",
   interval: "month",
   trialLabel: "First month free",
-  emoji: "🛡️",
-  sku: "APPLECARE-AIRPODS-PRO-MONTHLY",
+  emoji: "🎵",
+  sku: "AUDIOHOUND-PRO-MONTHLY",
 };
 
 export default function Checkout() {
@@ -252,9 +252,9 @@ export default function Checkout() {
                       sim_{Math.random().toString(36).slice(2, 10).toUpperCase()}
                     </span>
                   </p>
-                  <p className="text-xs text-gray-400 mb-2">${total.toFixed(2)} charged · AirPods Pro + MagSafe + AppleCare+</p>
+                  <p className="text-xs text-gray-400 mb-2">${total.toFixed(2)} charged · AirPods Pro + MagSafe + AudioHound Pro</p>
                   <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-full">
-                    <span>🛡️</span> AppleCare+ active · $3.99/mo after trial
+                    <span>🎵</span> AudioHound Pro active · $9.99/mo after trial
                   </div>
                 </div>
               ) : isSuccess && flowMode === "two-session" ? (
@@ -289,7 +289,7 @@ export default function Checkout() {
                   </button>
                   <p className="text-center text-xs text-gray-400 mt-3">
                     {flowMode === "one-session"
-                      ? "Authorizes payment + AppleCare+ subscription in one tap"
+                      ? "Authorizes payment + AudioHound Pro subscription in one tap"
                       : "Touch ID or Face ID required · Simulated demo environment"}
                   </p>
                 </>
@@ -347,8 +347,8 @@ export default function Checkout() {
                     </svg>
                   </div>
                   <div>
-                    <h3 className="text-base font-semibold text-gray-900 mb-0.5">AppleCare+ Activated!</h3>
-                    <p className="text-sm text-gray-500">First month free · then $3.99/month</p>
+                    <h3 className="text-base font-semibold text-gray-900 mb-0.5">AudioHound Pro Activated!</h3>
+                    <p className="text-sm text-gray-500">First month free · then $9.99/month</p>
                     <p className="text-xs text-gray-400 mt-1">
                       Recurring token stored · Apple will notify your server on card updates
                     </p>
@@ -519,7 +519,7 @@ export default function Checkout() {
                       className="w-full py-3 px-4 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 active:scale-[0.99] transition-all"
                       onClick={() => {}}
                     >
-                      Add AppleCare+ — Free for 1 Month
+                      Add AudioHound Pro — Free for 1 Month
                     </button>
                     <p className="text-center text-xs text-gray-400 mt-2">Cancel anytime · no commitment</p>
                     <button
