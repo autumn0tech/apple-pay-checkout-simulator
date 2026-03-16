@@ -4,6 +4,7 @@ interface DevPanelProps {
   currentStep: string;
   total: number;
   devMode?: "onetime" | "recurring" | "combined";
+  inStoreProvider?: "stripe" | "braintree";
 }
 
 type Tab = "flow" | "setup" | "events" | "recurring" | "combined" | "instore";
@@ -476,6 +477,208 @@ if (confirmedIntent.status === 'succeeded') {
   // });
 }`;
 
+const BRAINTREE_TWO_SESSION_CODE = `// ── IN-STORE TWO-SESSION (Braintree GraphQL API) ──
+// Ref: developer.paypal.com/braintree/in-person/guides/vaulting-and-customers/
+//
+// Session 1 — requestChargeFromInStoreReader charges the cart + vaults the card.
+// Session 2 — chargePaymentMethod(paymentMethodId) activates subscription off-session.
+//
+// Vaulted digital-wallet PMs (Apple Pay, Google Pay, Samsung Pay) get an MIT flag
+// automatically applied. Auth expiry is 24 hours — parse authorizationExpiresAt
+// and build re-auth logic. Future charges are card-not-present (CNP) pricing.
+
+const gql = (query, variables) =>
+  fetch('https://payments.sandbox.braintree-api.com/graphql', {
+    method: 'POST',
+    headers: {
+      Authorization: \`Bearer \${btoa('pub_key:priv_key')}\`,
+      'Braintree-Version': '2023-09-14',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  }).then(r => r.json()).then(r => r.data);
+
+// ── STEP 1 (Optional): Create a Braintree Customer ──
+const { createCustomer: { customer } } = await gql(\`
+  mutation CreateCustomer($input: CreateCustomerInput!) {
+    createCustomer(input: $input) {
+      customer { id email firstName lastName }
+    }
+  }\`, { input: { firstName: 'Jane', lastName: 'Doe', email: 'jane@example.com' } });
+
+// ── STEP 2 (Session 1): Charge reader + vault in one NFC tap ──
+// vaultPaymentMethodAfterTransacting: ON_SUCCESSFUL_TRANSACTION stores the
+// Apple Pay DPAN as a reusable MULTI_USE PaymentMethod in the Braintree vault.
+const { requestChargeFromInStoreReader: ctx } = await gql(\`
+  mutation RequestCharge($input: RequestChargeFromInStoreReaderInput!) {
+    requestChargeFromInStoreReader(input: $input) {
+      id      # inStoreContextPayload.id — poll this for completion
+      status
+      reader { id name status }
+    }
+  }\`, {
+  input: {
+    readerId: 'your_reader_id',
+    customerId: customer.id,
+    transaction: {
+      amount: '313.20',
+      orderId: 'AUDIOHOUND-ORDER-001',
+      lineItems: [
+        { quantity: 1, unitAmount: '249.00', name: 'AirPods Pro',     kind: 'DEBIT' },
+        { quantity: 1, unitAmount:  '39.00', name: 'MagSafe Charger', kind: 'DEBIT' },
+      ],
+    },
+    vaultPaymentMethodAfterTransacting: {
+      when: 'ON_SUCCESSFUL_TRANSACTION', // ← vault only on success
+    },
+  },
+});
+
+// ── STEP 3: Poll the context until COMPLETE ──
+// Customer authenticates with Face ID / Touch ID on their device.
+let result;
+do {
+  await new Promise(r => setTimeout(r, 1500)); // poll every 1.5 s
+  const { node } = await gql(\`
+    query CheckStatus($id: ID!) {
+      node(id: $id) {
+        ... on RequestChargeInStoreContext {
+          id status statusReason
+          transaction { id status amount { value } }
+          paymentMethod {
+            id     # ← store this — use for all future charges
+            usage  # MULTI_USE for vaulted Apple Pay tokens
+          }
+        }
+      }
+    }\`, { id: ctx.id });
+  result = node;
+} while (!['COMPLETE', 'FAILED'].includes(result.status));
+
+if (result.status !== 'COMPLETE') throw new Error(result.statusReason);
+const paymentMethodId = result.paymentMethod.id;
+showSubscriptionOffer(); // ← show AudioHound Pro upsell to customer
+
+// ── STEP 4 (Session 2): Activate subscription off-session ──
+// MIT flag is auto-applied — digital wallet vaults have a 24hr auth expiry.
+// Parse authorizationExpiresAt for re-auth logic on deferred captures.
+const { chargePaymentMethod: { transaction: sub } } = await gql(\`
+  mutation ActivateSub($input: ChargePaymentMethodInput!) {
+    chargePaymentMethod(input: $input) {
+      transaction {
+        id status
+        authorizationExpiresAt  # 24hr window for Apple Pay digital wallet PMs
+        amount { value currencyIsoCode }
+      }
+    }
+  }\`, {
+  input: {
+    paymentMethodId,
+    transaction: {
+      amount: '0.00', // free trial — first month $0.00
+      orderId: 'AUDIOHOUND-SUB-001',
+      descriptor: { name: 'AudioHound*Pro' },
+    },
+  },
+});`;
+
+const BRAINTREE_ONE_SESSION_CODE = `// ── IN-STORE ONE-SESSION (Braintree GraphQL API) ──
+// Ref: developer.paypal.com/braintree/in-person/guides/vaulting-and-customers/
+//
+// Single NFC tap: requestChargeFromInStoreReader charges the cart AND vaults
+// the card. Server immediately activates AudioHound Pro using the vaulted
+// paymentMethodId — no second customer interaction required.
+//
+// Key constraints (from Braintree docs):
+//   • MIT flag auto-applied → 24hr authorizationExpiresAt on digital wallet PMs
+//   • Future charges = card-not-present (CNP) pricing
+//   • paymentMethodId is UNIQUE PER VAULT — use uniqueNumberIdentifier for analytics
+
+const gql = (query, variables) =>
+  fetch('https://payments.sandbox.braintree-api.com/graphql', {
+    method: 'POST',
+    headers: {
+      Authorization: \`Bearer \${btoa('pub_key:priv_key')}\`,
+      'Braintree-Version': '2023-09-14',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  }).then(r => r.json()).then(r => r.data);
+
+// ── STEP 1: Single NFC tap — charge + vault ──
+const { requestChargeFromInStoreReader: ctx } = await gql(\`
+  mutation RequestCharge($input: RequestChargeFromInStoreReaderInput!) {
+    requestChargeFromInStoreReader(input: $input) {
+      id status
+      reader { id name status }
+    }
+  }\`, {
+  input: {
+    readerId: 'your_reader_id',
+    customerId: 'customer_id_from_crm',
+    transaction: {
+      amount: '313.20',
+      orderId: 'AUDIOHOUND-ORDER-001',
+      lineItems: [
+        { quantity: 1, unitAmount: '249.00', name: 'AirPods Pro',     kind: 'DEBIT' },
+        { quantity: 1, unitAmount:  '39.00', name: 'MagSafe Charger', kind: 'DEBIT' },
+        { quantity: 1, unitAmount:   '0.00', name: 'AudioHound Pro (1mo free)', kind: 'DEBIT' },
+      ],
+    },
+    vaultPaymentMethodAfterTransacting: { when: 'ON_SUCCESSFUL_TRANSACTION' },
+  },
+});
+
+// ── STEP 2: Poll until COMPLETE ──
+let result;
+do {
+  await new Promise(r => setTimeout(r, 1500));
+  const { node } = await gql(\`
+    query CheckStatus($id: ID!) {
+      node(id: $id) {
+        ... on RequestChargeInStoreContext {
+          id status statusReason
+          transaction { id status }
+          paymentMethod {
+            id    # ← use for subscription billing
+            details {
+              ... on CreditCardDetails {
+                uniqueNumberIdentifier  # stable per card — use for analytics/dedup
+                brandCode last4 bin
+              }
+            }
+          }
+        }
+      }
+    }\`, { id: ctx.id });
+  result = node;
+} while (!['COMPLETE', 'FAILED'].includes(result.status));
+
+if (result.status !== 'COMPLETE') throw new Error(result.statusReason);
+
+// ── STEP 3 (server): Immediately activate subscription using vaulted PM ──
+// No second tap required. MIT flag auto-applied — build re-auth on authorizationExpiresAt.
+const { chargePaymentMethod: { transaction: sub } } = await gql(\`
+  mutation ActivateSub($input: ChargePaymentMethodInput!) {
+    chargePaymentMethod(input: $input) {
+      transaction {
+        id status
+        authorizationExpiresAt  # 24hr for Apple Pay digital wallet card_present vaults
+        amount { value currencyIsoCode }
+      }
+    }
+  }\`, {
+  input: {
+    paymentMethodId: result.paymentMethod.id,
+    transaction: {
+      amount: '0.00', // $0.00 for free trial month
+      orderId: 'AUDIOHOUND-SUB-001',
+      descriptor: { name: 'AudioHound*Pro' },
+    },
+  },
+});
+showConfirmation({ payment: true, subscription: true });`;
+
 function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -504,7 +707,7 @@ function CodeBlock({ code }: { code: string }) {
   );
 }
 
-export default function DevPanel({ currentStep, total, devMode = "onetime" }: DevPanelProps) {
+export default function DevPanel({ currentStep, total, devMode = "onetime", inStoreProvider = "stripe" }: DevPanelProps) {
   const [tab, setTab] = useState<Tab>("flow");
   const stepInfo = ALL_STEPS[currentStep] ?? ALL_STEPS["idle"];
 
@@ -757,24 +960,44 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
           </div>
         )}
 
-        {/* IN-STORE: STRIPE TERMINAL TAB */}
+        {/* IN-STORE TAB */}
         {tab === "instore" && (
           <div className="space-y-3">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">In-store · Ingenico P400 · Stripe Terminal JS SDK</p>
+            <div className="flex items-center justify-between mb-2 px-1">
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium">
+                In-store · Ingenico P400
+              </p>
+              <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+                inStoreProvider === "stripe"
+                  ? "bg-violet-500/20 text-violet-300 border-violet-500/30"
+                  : "bg-sky-500/20 text-sky-300 border-sky-500/30"
+              }`}>
+                {inStoreProvider === "stripe" ? "Stripe Terminal JS SDK" : "Braintree GraphQL API"}
+              </span>
+            </div>
 
-            <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl">
-              <p className="text-[10px] text-orange-300 font-semibold mb-1.5">How in-store Apple Pay differs from online</p>
+            <div className={`p-3 rounded-xl border ${inStoreProvider === "stripe" ? "bg-orange-500/10 border-orange-500/20" : "bg-sky-500/10 border-sky-500/20"}`}>
+              <p className={`text-[10px] font-semibold mb-1.5 ${inStoreProvider === "stripe" ? "text-orange-300" : "text-sky-300"}`}>
+                How in-store Apple Pay differs from online
+              </p>
               <div className="space-y-1">
-                {[
-                  ["NFC layer",        "Stripe Terminal SDK — not the browser ApplePaySession"],
-                  ["Reader",           "Ingenico P400 / BBPOS WisePOS E (Stripe-certified)"],
-                  ["Auth surface",     "Customer's iPhone/Watch — Face ID or Touch ID"],
-                  ["Subscription",     "Two-session: 2nd browser ApplePaySession after purchase"],
-                  ["One-session",      "Terminal tap + setup_future_usage saves card for billing"],
-                  ["Token type",       "Stripe PaymentMethod (card_present), not an Apple token"],
-                ].map(([k, v]) => (
+                {(inStoreProvider === "stripe" ? [
+                  ["NFC layer",    "Stripe Terminal SDK — not the browser ApplePaySession"],
+                  ["Reader",       "Ingenico P400 / BBPOS WisePOS E (Stripe-certified)"],
+                  ["Auth surface", "Customer's iPhone/Watch — Face ID or Touch ID"],
+                  ["Token type",   "Stripe PaymentMethod (card_present), not an Apple token"],
+                  ["Vault",        "setup_future_usage: 'off_session' on the PaymentIntent"],
+                  ["Subscription", "stripe.subscriptions.create() needs a generated_card PM"],
+                ] : [
+                  ["NFC layer",    "Braintree In-Person SDK — GraphQL mutations, not ApplePaySession"],
+                  ["Reader",       "Braintree-certified readers (e.g., Ingenico Lane/3000 series)"],
+                  ["Auth surface", "Customer's iPhone/Watch — Face ID or Touch ID"],
+                  ["Token type",   "Braintree paymentMethodId (MULTI_USE) — unique per vault request"],
+                  ["Vault",        "vaultPaymentMethodAfterTransacting: ON_SUCCESSFUL_TRANSACTION"],
+                  ["Future",       "chargePaymentMethod(paymentMethodId) — MIT flag auto-applied"],
+                ]).map(([k, v]) => (
                   <div key={k} className="flex gap-2">
-                    <span className="text-[10px] text-orange-400 font-mono shrink-0">{k}:</span>
+                    <span className={`text-[10px] font-mono shrink-0 ${inStoreProvider === "stripe" ? "text-orange-400" : "text-sky-400"}`}>{k}:</span>
                     <span className="text-[10px] text-gray-400 leading-relaxed">{v}</span>
                   </div>
                 ))}
@@ -782,27 +1005,43 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
             </div>
 
             <div className="flex gap-1.5 mb-1">
-              <span className="text-[10px] font-semibold text-orange-300 bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-full">Two-Session</span>
-              <span className="text-[10px] text-gray-500 self-center">— NFC purchase then browser subscription</span>
+              <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${inStoreProvider === "stripe" ? "text-orange-300 bg-orange-500/10 border-orange-500/20" : "text-sky-300 bg-sky-500/10 border-sky-500/20"}`}>
+                Two-Session
+              </span>
+              <span className="text-[10px] text-gray-500 self-center">
+                {inStoreProvider === "stripe" ? "— NFC purchase then browser subscription" : "— NFC charge + vault, then off-session subscription"}
+              </span>
             </div>
-            <CodeBlock code={INSTORE_TWO_SESSION_CODE} />
+            <CodeBlock code={inStoreProvider === "stripe" ? INSTORE_TWO_SESSION_CODE : BRAINTREE_TWO_SESSION_CODE} />
 
             <div className="flex gap-1.5 mt-2 mb-1">
-              <span className="text-[10px] font-semibold text-orange-300 bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-full">One-Session</span>
-              <span className="text-[10px] text-gray-500 self-center">— single tap, saves card for subscription</span>
+              <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${inStoreProvider === "stripe" ? "text-orange-300 bg-orange-500/10 border-orange-500/20" : "text-sky-300 bg-sky-500/10 border-sky-500/20"}`}>
+                One-Session
+              </span>
+              <span className="text-[10px] text-gray-500 self-center">
+                {inStoreProvider === "stripe" ? "— single tap, saves card for subscription" : "— single tap charges + immediately activates subscription"}
+              </span>
             </div>
-            <CodeBlock code={INSTORE_ONE_SESSION_CODE} />
+            <CodeBlock code={inStoreProvider === "stripe" ? INSTORE_ONE_SESSION_CODE : BRAINTREE_ONE_SESSION_CODE} />
 
             <div className="p-3 bg-gray-800 border border-gray-700 rounded-xl">
-              <p className="text-[10px] text-gray-400 font-semibold mb-1.5">Required Stripe Terminal setup</p>
+              <p className="text-[10px] text-gray-400 font-semibold mb-1.5">
+                {inStoreProvider === "stripe" ? "Required Stripe Terminal setup" : "Required Braintree setup"}
+              </p>
               <div className="space-y-1">
-                {[
-                  ["SDK",         "npm install @stripe/terminal-js"],
-                  ["Location",    "Register in Stripe Dashboard → Terminal → Locations"],
-                  ["Reader",      "Ingenico P400 · register via Dashboard or API"],
-                  ["Connection",  "Server generates connection token (POST /terminal/connection-token)"],
-                  ["Simulated",   "Use { simulated: true } in discoverReaders for testing"],
-                ].map(([k, v]) => (
+                {(inStoreProvider === "stripe" ? [
+                  ["SDK",        "npm install @stripe/terminal-js"],
+                  ["Location",   "Register in Stripe Dashboard → Terminal → Locations"],
+                  ["Reader",     "Ingenico P400 · register via Dashboard or API"],
+                  ["Connection", "Server generates connection token (POST /terminal/connection-token)"],
+                  ["Simulated",  "Use { simulated: true } in discoverReaders for testing"],
+                ] : [
+                  ["SDK",        "Braintree GraphQL API — no separate npm package required"],
+                  ["Auth",       "HTTP Basic: base64(public_key:private_key) in Authorization header"],
+                  ["Version",    "Braintree-Version: 2023-09-14 header required on all requests"],
+                  ["Reader",     "Register reader in Braintree Control Panel → In-Store → Readers"],
+                  ["Sandbox",    "Use payments.sandbox.braintree-api.com/graphql for testing"],
+                ]).map(([k, v]) => (
                   <div key={k} className="flex gap-2">
                     <span className="text-[10px] text-gray-500 font-mono shrink-0">{k}:</span>
                     <span className="text-[10px] text-gray-500 font-mono leading-relaxed">{v}</span>
