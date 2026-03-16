@@ -289,15 +289,23 @@ app.post('/api/apple-pay/purchase-with-subscription', async (req, res) => {
   res.json({ success: true });
 });`;
 
-const INSTORE_TWO_SESSION_CODE = `// ── IN-STORE TWO-SESSION (Ingenico P400 + Stripe Terminal) ──
-// Session 1: Stripe Terminal collects NFC tap → Apple Pay charge
-// Session 2: Browser ApplePaySession enrolls subscription
+const INSTORE_TWO_SESSION_CODE = `// ── IN-STORE TWO-SESSION (Ingenico P400 · Stripe Terminal JS SDK) ──
+// Ref: docs.stripe.com/payments/wallets · docs.stripe.com/terminal
+//
+// Session 1 — Terminal NFC tap charges the cart
+// Session 2 — Saved PaymentMethod activates the subscription off-session
+//
+// Apple Pay IS supported by Stripe Terminal (card_present wallet token).
+// Saved digital-wallet tokens trigger an MIT flag → 24 hr auth window.
+// See: docs.stripe.com/payments/wallets (product support table)
 
 import { loadStripeTerminal } from '@stripe/terminal-js';
 
-// ── STEP 1: Connect to P400 reader ──
-const terminal = (await loadStripeTerminal()).create({
+// ── STEP 1: Boot the Terminal SDK and connect to the P400 ──
+const StripeTerminal = await loadStripeTerminal();
+const terminal = StripeTerminal.create({
   onFetchConnectionToken: async () => {
+    // Your server calls stripe.terminal.connectionTokens.create()
     const { secret } = await fetch('/terminal/connection-token',
       { method: 'POST' }).then(r => r.json());
     return secret;
@@ -306,150 +314,167 @@ const terminal = (await loadStripeTerminal()).create({
 });
 
 const { readers } = await terminal.discoverReaders({
-  simulated: false,        // true for Stripe simulator
-  location: 'tmr_loc_xxx' // your registered location ID
+  simulated: false,         // set true to use Stripe's built-in simulator
+  location: 'tmr_loc_xxx'  // Stripe Dashboard → Terminal → Locations
 });
+if (readers.length === 0) throw new Error('No readers found');
 await terminal.connectReader(readers[0]);
 
-// ── STEP 2: Create PaymentIntent on server ──
+// ── STEP 2 (server): Create a PaymentIntent for the cart total ──
+// setup_future_usage: 'off_session' vaults the card_present payment method
+// so the same card can be billed again without the customer being present.
+//
+// app.post('/create-payment-intent', async (req, res) => {
+//   const pi = await stripe.paymentIntents.create({
+//     amount: 31320,          // $313.20 in cents
+//     currency: 'usd',
+//     payment_method_types: ['card_present'],
+//     capture_method: 'automatic',
+//     setup_future_usage: 'off_session', // ← vaults the card after auth
+//   });
+//   res.json({ clientSecret: pi.client_secret });
+// });
+
 const { clientSecret } = await fetch('/create-payment-intent', {
   method: 'POST',
   body: JSON.stringify({ amount: 31320, currency: 'usd' }),
-  headers: { 'Content-Type': 'application/json' }
+  headers: { 'Content-Type': 'application/json' },
 }).then(r => r.json());
 
-// ── STEP 3: Customer taps iPhone/Watch on P400 ──
-// Terminal triggers Apple Pay on the customer's device (Face ID / Touch ID)
-const { paymentIntent: collected } =
+// ── STEP 3: Customer taps iPhone / Apple Watch on the P400 ──
+// The Terminal SDK presents Apple Pay on the customer's device.
+// Face ID or Touch ID authorizes the payment — no PIN needed.
+const { paymentIntent: collectedIntent, error: collectError } =
   await terminal.collectPaymentMethod(clientSecret);
+if (collectError) throw collectError;
 
-// ── STEP 4: Confirm + capture ──
-const { paymentIntent: confirmed } =
-  await terminal.confirmPaymentIntent(collected);
+// ── STEP 4: Confirm — captures the charge ──
+const { paymentIntent: confirmedIntent, error: confirmError } =
+  await terminal.confirmPaymentIntent(collectedIntent);
+if (confirmError) throw confirmError;
 
-if (confirmed.status === 'succeeded') {
-  showSubscriptionOffer(); // render upsell on POS/customer display
+// confirmedIntent.status === 'succeeded'
+// confirmedIntent.payment_method holds the vaulted card_present PaymentMethod
 
-  // ── STEP 5 (Session 2): Browser Apple Pay for recurring ──
-  // Customer taps "YES" → launch ApplePaySession in the browser kiosk display
-  const subSession = new ApplePaySession(14, {
-    countryCode: 'US', currencyCode: 'USD',
-    merchantCapabilities: ['supports3DS'],
-    supportedNetworks: ['visa', 'masterCard', 'amex'],
-    total: { label: 'AudioHound Pro', amount: '0.00', type: 'final' },
-    recurringPaymentRequest: {
-      paymentDescription: 'AudioHound Pro',
-      regularBilling: {
-        label: 'AudioHound Pro Monthly', amount: '9.99',
-        recurringPaymentIntervalUnit: 'month',
-        recurringPaymentIntervalCount: 1,
-        recurringPaymentStartDate:
-          new Date(Date.now() + 30*24*60*60*1000).toISOString()
-      },
-      billingAgreement:
-        'First month free, then $9.99/month until cancelled.',
-      managementURL:  'https://yourdomain.com/subscriptions',
-      tokenNotificationURL:
-        'https://yourdomain.com/api/apple-pay/token-update'
-    }
+if (confirmedIntent.status === 'succeeded') {
+  showSubscriptionOffer(); // display upsell on POS / customer-facing screen
+
+  // ── STEP 5 (Session 2 — server): Activate subscription off-session ──
+  // Use the vaulted PaymentMethod to create a Stripe Subscription.
+  // This is an MIT (merchant-initiated transaction); Apple Pay digital-wallet
+  // tokens have a 24-hour authorization expiry window — factor this into
+  // your capture and re-auth logic (check authorizationExpiresAt).
+  await fetch('/api/activate-subscription', {
+    method: 'POST',
+    body: JSON.stringify({
+      paymentIntentId: confirmedIntent.id,  // server retrieves payment_method from this
+      plan: 'audiohound_pro_monthly',
+      trialDays: 30,
+    }),
+    headers: { 'Content-Type': 'application/json' },
   });
-  subSession.onvalidatemerchant = async (e) => {
-    const ms = await fetch('/api/apple-pay/validate', {
-      method: 'POST',
-      body: JSON.stringify({ validationURL: e.validationURL }),
-      headers: { 'Content-Type': 'application/json' }
-    }).then(r => r.json());
-    subSession.completeMerchantValidation(ms);
-  };
-  subSession.onpaymentauthorized = async (e) => {
-    await fetch('/api/apple-pay/subscribe', {
-      method: 'POST',
-      body: JSON.stringify({
-        token: e.payment.token,
-        plan: 'audiohound_pro_monthly'
-      }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    subSession.completePayment(ApplePaySession.STATUS_SUCCESS);
-  };
-  subSession.begin();
+
+  // Server-side /api/activate-subscription:
+  // const pi  = await stripe.paymentIntents.retrieve(paymentIntentId);
+  // const sub = await stripe.subscriptions.create({
+  //   customer: customerId,
+  //   items: [{ price: 'price_audiohound_pro_monthly' }],
+  //   default_payment_method: pi.payment_method,  // ← vaulted card_present PM
+  //   trial_period_days: 30,
+  //   off_session: true,
+  // });
 }`;
 
-const INSTORE_ONE_SESSION_CODE = `// ── IN-STORE ONE-SESSION (Ingenico P400 + Stripe Terminal) ──
-// Single NFC tap: Stripe Terminal collects payment AND
-// embeds subscription enrollment in the PaymentIntent metadata.
-// The Apple Pay sheet on the customer's device shows both charges.
+const INSTORE_ONE_SESSION_CODE = `// ── IN-STORE ONE-SESSION (Ingenico P400 · Stripe Terminal JS SDK) ──
+// Ref: docs.stripe.com/payments/wallets · docs.stripe.com/terminal
+//
+// Single NFC tap — payment captured AND card vaulted for subscription.
+// setup_future_usage: 'off_session' on the PaymentIntent does both in one
+// collectPaymentMethod call. No second tap required from the customer.
+//
+// Limitation (from docs.stripe.com/payments/wallets):
+// "Some wallets don't support recurring payments, and others have limited
+//  support — requiring customer re-authentication or restricting retries."
+// Always confirm Apple Pay off-session support for your Stripe account region.
 
 import { loadStripeTerminal } from '@stripe/terminal-js';
 
-// ── STEP 1: Connect reader (same as two-session) ──
-const terminal = (await loadStripeTerminal()).create({
+// ── STEP 1: Boot SDK + connect reader (identical to two-session) ──
+const StripeTerminal = await loadStripeTerminal();
+const terminal = StripeTerminal.create({
   onFetchConnectionToken: async () => {
     const { secret } = await fetch('/terminal/connection-token',
       { method: 'POST' }).then(r => r.json());
     return secret;
-  }
+  },
+  onUnexpectedReaderDisconnect: () => console.warn('Reader disconnected'),
 });
 const { readers } = await terminal.discoverReaders({ simulated: false });
 await terminal.connectReader(readers[0]);
 
-// ── STEP 2: Create PaymentIntent with subscription metadata ──
-// Server creates a SetupIntent alongside the PaymentIntent so
-// the single tap captures payment AND stores a payment method
-// for future subscription billing.
-const { clientSecret, setupIntentClientSecret } =
-  await fetch('/create-combined-intent', {
-    method: 'POST',
-    body: JSON.stringify({
-      amount: 31320,
-      currency: 'usd',
-      plan: 'audiohound_pro_monthly',
-      metadata: {
-        subscribe: 'true',
-        plan_id: 'audiohound_pro_monthly'
-      }
-    }),
-    headers: { 'Content-Type': 'application/json' }
-  }).then(r => r.json());
+// ── STEP 2 (server): PaymentIntent with setup_future_usage ──
+// setup_future_usage: 'off_session' tells Stripe to vault the card_present
+// PaymentMethod after authorization so it can be charged again off-session.
+//
+// app.post('/create-payment-intent', async (req, res) => {
+//   const pi = await stripe.paymentIntents.create({
+//     amount: 31320,
+//     currency: 'usd',
+//     payment_method_types: ['card_present'],
+//     capture_method: 'automatic',
+//     setup_future_usage: 'off_session', // ← single-tap vault + charge
+//     metadata: { plan: 'audiohound_pro_monthly', subscribe: 'true' },
+//   });
+//   res.json({ clientSecret: pi.client_secret });
+// });
 
-// ── STEP 3: Customer taps phone once ──
-// Stripe Terminal presents Apple Pay on the customer's device.
-// The POS display shows the line items including the subscription trial.
-const { paymentIntent: collected } =
-  await terminal.collectPaymentMethod(clientSecret, {
-    // Pass setup_future_usage so the payment method is saved for subscription
-    config_override: { payment_method_types: ['card_present'] }
-  });
+const { clientSecret } = await fetch('/create-payment-intent', {
+  method: 'POST',
+  body: JSON.stringify({
+    amount: 31320,
+    currency: 'usd',
+    metadata: { subscribe: 'true', plan: 'audiohound_pro_monthly' },
+  }),
+  headers: { 'Content-Type': 'application/json' },
+}).then(r => r.json());
 
-// ── STEP 4: Confirm — captures payment + saves method ──
-const { paymentIntent: confirmed } =
-  await terminal.confirmPaymentIntent(collected);
+// ── STEP 3: Single tap — customer taps iPhone / Watch once ──
+// Stripe Terminal surfaces Apple Pay on the customer's device.
+// The payment is captured AND the card is vaulted in one interaction.
+const { paymentIntent: collectedIntent, error: collectError } =
+  await terminal.collectPaymentMethod(clientSecret);
+if (collectError) throw collectError;
 
-if (confirmed.status === 'succeeded') {
-  // Attach saved payment method to subscription on server
+const { paymentIntent: confirmedIntent, error: confirmError } =
+  await terminal.confirmPaymentIntent(collectedIntent);
+if (confirmError) throw confirmError;
+
+// ── STEP 4 (server): Subscription is activated using the vaulted card ──
+// The MIT (merchant-initiated) flag applies. Digital-wallet card_present
+// tokens have a 24-hour auth expiry — build re-auth logic accordingly.
+if (confirmedIntent.status === 'succeeded') {
   await fetch('/api/activate-subscription', {
     method: 'POST',
     body: JSON.stringify({
-      paymentIntentId: confirmed.id,
-      plan: 'audiohound_pro_monthly'
+      paymentIntentId: confirmedIntent.id,
+      plan: 'audiohound_pro_monthly',
+      trialDays: 30,
     }),
-    headers: { 'Content-Type': 'application/json' }
+    headers: { 'Content-Type': 'application/json' },
   });
   showConfirmation({ payment: true, subscription: true });
-}
 
-// ── SERVER: /create-combined-intent ──
-// app.post('/create-combined-intent', async (req, res) => {
-//   const pi = await stripe.paymentIntents.create({
-//     amount: req.body.amount,
-//     currency: req.body.currency,
-//     payment_method_types: ['card_present'],
-//     capture_method: 'automatic',
-//     setup_future_usage: 'off_session', // ← saves card for subscription
-//     metadata: req.body.metadata
-//   });
-//   res.json({ clientSecret: pi.client_secret });
-// });`;
+  // Server-side /api/activate-subscription:
+  // const pi  = await stripe.paymentIntents.retrieve(paymentIntentId);
+  // const sub = await stripe.subscriptions.create({
+  //   customer: customerId,
+  //   items: [{ price: 'price_audiohound_pro_monthly' }],
+  //   default_payment_method: pi.payment_method, // vaulted card_present PM
+  //   trial_period_days: 30,
+  //   off_session: true,
+  //   expand: ['latest_invoice.payment_intent'],
+  // });
+}`;
 
 function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
