@@ -4,10 +4,11 @@ import ApplePaySheet from "@/components/ApplePaySheet";
 import DevPanel from "@/components/DevPanel";
 import OrderSummary from "@/components/OrderSummary";
 import SimulationGuide from "@/components/SimulationGuide";
+import InStoreSimulator from "@/components/InStoreSimulator";
 
 export type PaymentStatus = "idle" | "processing" | "success" | "failed";
 export type SubStatus = "none" | "upsell" | "processing" | "success" | "declined";
-export type FlowMode = "two-session" | "one-session";
+export type FlowMode = "two-session" | "one-session" | "in-store";
 export type SheetMode = "onetime" | "recurring" | "combined";
 
 const CART_ITEMS = [
@@ -180,18 +181,17 @@ export default function Checkout() {
 
             {/* Flow mode switcher */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-1.5 flex gap-1">
-              {(["one-session", "two-session"] as FlowMode[]).map((mode) => {
+              {([
+                { mode: "one-session", label: "One-Session Flow",  sublabel: "Subscription as SKU at checkout",   activeClass: "bg-indigo-600 text-white shadow-sm" },
+                { mode: "two-session", label: "Two-Session Flow",  sublabel: "Purchase → post-purchase upsell",   activeClass: "bg-blue-600 text-white shadow-sm" },
+                { mode: "in-store",    label: "In-Store / P400",   sublabel: "NFC tap on Ingenico terminal",      activeClass: "bg-orange-600 text-white shadow-sm" },
+              ] as { mode: FlowMode; label: string; sublabel: string; activeClass: string }[]).map(({ mode, label, sublabel, activeClass }) => {
                 const active = flowMode === mode;
-                const label = mode === "two-session" ? "Two-Session Flow" : "One-Session Flow";
-                const sublabel = mode === "two-session" ? "Purchase → post-purchase upsell" : "Subscription as SKU at checkout";
-                const activeClass = mode === "two-session"
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-indigo-600 text-white shadow-sm";
                 return (
                   <button
                     key={mode}
                     onClick={() => handleFlowModeChange(mode)}
-                    className={`flex-1 px-4 py-2.5 rounded-xl text-left transition-all ${active ? activeClass : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}
+                    className={`flex-1 px-3 py-2.5 rounded-xl text-left transition-all ${active ? activeClass : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}
                   >
                     <p className={`text-xs font-semibold leading-tight ${active ? "text-white" : "text-gray-700"}`}>{label}</p>
                     <p className={`text-[10px] mt-0.5 leading-tight ${active ? "text-white/70" : "text-gray-400"}`}>{sublabel}</p>
@@ -249,11 +249,16 @@ export default function Checkout() {
               </div>
             </div>
 
-            {/* Simulation guide */}
-            <SimulationGuide flowMode={flowMode} />
+            {/* In-Store P400 simulator */}
+            {flowMode === "in-store" && (
+              <InStoreSimulator onStepChange={setCurrentStep} />
+            )}
 
-            {/* Express Checkout */}
-            {manualPayStatus === "idle" && <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            {/* Simulation guide — online flows only */}
+            {flowMode !== "in-store" && <SimulationGuide flowMode={flowMode} />}
+
+            {/* Express Checkout — online flows only */}
+            {flowMode !== "in-store" && manualPayStatus === "idle" && <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 h-px bg-gray-200"></div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-widest">Express Checkout</p>
@@ -393,7 +398,7 @@ export default function Checkout() {
             )}
 
             {/* Divider */}
-            {!isSuccess && manualPayStatus === "idle" && (
+            {flowMode !== "in-store" && !isSuccess && manualPayStatus === "idle" && (
               <div className="flex items-center gap-4">
                 <div className="flex-1 h-px bg-gray-200"></div>
                 <span className="text-xs text-gray-400 font-medium">or continue below</span>
@@ -402,7 +407,7 @@ export default function Checkout() {
             )}
 
             {/* Shipping */}
-            {!isSuccess && manualPayStatus === "idle" && (
+            {flowMode !== "in-store" && !isSuccess && manualPayStatus === "idle" && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">Shipping Information</h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -435,7 +440,7 @@ export default function Checkout() {
             )}
 
             {/* Payment */}
-            {!isSuccess && manualPayStatus === "idle" && (
+            {flowMode !== "in-store" && !isSuccess && manualPayStatus === "idle" && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">Payment Method</h2>
                 <div className="grid grid-cols-2 gap-3">

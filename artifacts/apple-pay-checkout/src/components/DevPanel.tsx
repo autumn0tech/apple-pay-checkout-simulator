@@ -6,7 +6,7 @@ interface DevPanelProps {
   devMode?: "onetime" | "recurring" | "combined";
 }
 
-type Tab = "flow" | "setup" | "events" | "recurring" | "combined";
+type Tab = "flow" | "setup" | "events" | "recurring" | "combined" | "instore";
 
 const ALL_STEPS: Record<string, { label: string; color: string; desc: string }> = {
   idle: { label: "Idle", color: "text-gray-400", desc: "Waiting for user to tap Apple Pay button" },
@@ -289,6 +289,168 @@ app.post('/api/apple-pay/purchase-with-subscription', async (req, res) => {
   res.json({ success: true });
 });`;
 
+const INSTORE_TWO_SESSION_CODE = `// ── IN-STORE TWO-SESSION (Ingenico P400 + Stripe Terminal) ──
+// Session 1: Stripe Terminal collects NFC tap → Apple Pay charge
+// Session 2: Browser ApplePaySession enrolls subscription
+
+import { loadStripeTerminal } from '@stripe/terminal-js';
+
+// ── STEP 1: Connect to P400 reader ──
+const terminal = (await loadStripeTerminal()).create({
+  onFetchConnectionToken: async () => {
+    const { secret } = await fetch('/terminal/connection-token',
+      { method: 'POST' }).then(r => r.json());
+    return secret;
+  },
+  onUnexpectedReaderDisconnect: () => console.warn('Reader disconnected'),
+});
+
+const { readers } = await terminal.discoverReaders({
+  simulated: false,        // true for Stripe simulator
+  location: 'tmr_loc_xxx' // your registered location ID
+});
+await terminal.connectReader(readers[0]);
+
+// ── STEP 2: Create PaymentIntent on server ──
+const { clientSecret } = await fetch('/create-payment-intent', {
+  method: 'POST',
+  body: JSON.stringify({ amount: 31320, currency: 'usd' }),
+  headers: { 'Content-Type': 'application/json' }
+}).then(r => r.json());
+
+// ── STEP 3: Customer taps iPhone/Watch on P400 ──
+// Terminal triggers Apple Pay on the customer's device (Face ID / Touch ID)
+const { paymentIntent: collected } =
+  await terminal.collectPaymentMethod(clientSecret);
+
+// ── STEP 4: Confirm + capture ──
+const { paymentIntent: confirmed } =
+  await terminal.confirmPaymentIntent(collected);
+
+if (confirmed.status === 'succeeded') {
+  showSubscriptionOffer(); // render upsell on POS/customer display
+
+  // ── STEP 5 (Session 2): Browser Apple Pay for recurring ──
+  // Customer taps "YES" → launch ApplePaySession in the browser kiosk display
+  const subSession = new ApplePaySession(14, {
+    countryCode: 'US', currencyCode: 'USD',
+    merchantCapabilities: ['supports3DS'],
+    supportedNetworks: ['visa', 'masterCard', 'amex'],
+    total: { label: 'AudioHound Pro', amount: '0.00', type: 'final' },
+    recurringPaymentRequest: {
+      paymentDescription: 'AudioHound Pro',
+      regularBilling: {
+        label: 'AudioHound Pro Monthly', amount: '9.99',
+        recurringPaymentIntervalUnit: 'month',
+        recurringPaymentIntervalCount: 1,
+        recurringPaymentStartDate:
+          new Date(Date.now() + 30*24*60*60*1000).toISOString()
+      },
+      billingAgreement:
+        'First month free, then $9.99/month until cancelled.',
+      managementURL:  'https://yourdomain.com/subscriptions',
+      tokenNotificationURL:
+        'https://yourdomain.com/api/apple-pay/token-update'
+    }
+  });
+  subSession.onvalidatemerchant = async (e) => {
+    const ms = await fetch('/api/apple-pay/validate', {
+      method: 'POST',
+      body: JSON.stringify({ validationURL: e.validationURL }),
+      headers: { 'Content-Type': 'application/json' }
+    }).then(r => r.json());
+    subSession.completeMerchantValidation(ms);
+  };
+  subSession.onpaymentauthorized = async (e) => {
+    await fetch('/api/apple-pay/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({
+        token: e.payment.token,
+        plan: 'audiohound_pro_monthly'
+      }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    subSession.completePayment(ApplePaySession.STATUS_SUCCESS);
+  };
+  subSession.begin();
+}`;
+
+const INSTORE_ONE_SESSION_CODE = `// ── IN-STORE ONE-SESSION (Ingenico P400 + Stripe Terminal) ──
+// Single NFC tap: Stripe Terminal collects payment AND
+// embeds subscription enrollment in the PaymentIntent metadata.
+// The Apple Pay sheet on the customer's device shows both charges.
+
+import { loadStripeTerminal } from '@stripe/terminal-js';
+
+// ── STEP 1: Connect reader (same as two-session) ──
+const terminal = (await loadStripeTerminal()).create({
+  onFetchConnectionToken: async () => {
+    const { secret } = await fetch('/terminal/connection-token',
+      { method: 'POST' }).then(r => r.json());
+    return secret;
+  }
+});
+const { readers } = await terminal.discoverReaders({ simulated: false });
+await terminal.connectReader(readers[0]);
+
+// ── STEP 2: Create PaymentIntent with subscription metadata ──
+// Server creates a SetupIntent alongside the PaymentIntent so
+// the single tap captures payment AND stores a payment method
+// for future subscription billing.
+const { clientSecret, setupIntentClientSecret } =
+  await fetch('/create-combined-intent', {
+    method: 'POST',
+    body: JSON.stringify({
+      amount: 31320,
+      currency: 'usd',
+      plan: 'audiohound_pro_monthly',
+      metadata: {
+        subscribe: 'true',
+        plan_id: 'audiohound_pro_monthly'
+      }
+    }),
+    headers: { 'Content-Type': 'application/json' }
+  }).then(r => r.json());
+
+// ── STEP 3: Customer taps phone once ──
+// Stripe Terminal presents Apple Pay on the customer's device.
+// The POS display shows the line items including the subscription trial.
+const { paymentIntent: collected } =
+  await terminal.collectPaymentMethod(clientSecret, {
+    // Pass setup_future_usage so the payment method is saved for subscription
+    config_override: { payment_method_types: ['card_present'] }
+  });
+
+// ── STEP 4: Confirm — captures payment + saves method ──
+const { paymentIntent: confirmed } =
+  await terminal.confirmPaymentIntent(collected);
+
+if (confirmed.status === 'succeeded') {
+  // Attach saved payment method to subscription on server
+  await fetch('/api/activate-subscription', {
+    method: 'POST',
+    body: JSON.stringify({
+      paymentIntentId: confirmed.id,
+      plan: 'audiohound_pro_monthly'
+    }),
+    headers: { 'Content-Type': 'application/json' }
+  });
+  showConfirmation({ payment: true, subscription: true });
+}
+
+// ── SERVER: /create-combined-intent ──
+// app.post('/create-combined-intent', async (req, res) => {
+//   const pi = await stripe.paymentIntents.create({
+//     amount: req.body.amount,
+//     currency: req.body.currency,
+//     payment_method_types: ['card_present'],
+//     capture_method: 'automatic',
+//     setup_future_usage: 'off_session', // ← saves card for subscription
+//     metadata: req.body.metadata
+//   });
+//   res.json({ clientSecret: pi.client_secret });
+// });`;
+
 function CodeBlock({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   return (
@@ -367,11 +529,13 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
     ["events", "Two-Session"],
     ["recurring", "Recurring"],
     ["combined", "One-Session"],
+    ["instore", "In-Store"],
   ];
 
   const activeTabColor = (id: Tab) => {
     if (id === "combined") return "text-indigo-400 border-b-2 border-indigo-400 bg-gray-900/50";
     if (id === "recurring") return "text-purple-400 border-b-2 border-purple-400 bg-gray-900/50";
+    if (id === "instore") return "text-orange-400 border-b-2 border-orange-400 bg-gray-900/50";
     return "text-blue-400 border-b-2 border-blue-400 bg-gray-900/50";
   };
 
@@ -564,6 +728,62 @@ export default function DevPanel({ currentStep, total, devMode = "onetime" }: De
                 <li>Apple calls <span className="font-mono">tokenNotificationURL</span> when the user's card is updated so you can silently update without re-auth</li>
                 <li>Never charge the token before <span className="font-mono">recurringPaymentStartDate</span></li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* IN-STORE: STRIPE TERMINAL TAB */}
+        {tab === "instore" && (
+          <div className="space-y-3">
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">In-store · Ingenico P400 · Stripe Terminal JS SDK</p>
+
+            <div className="p-3 bg-orange-500/10 border border-orange-500/20 rounded-xl">
+              <p className="text-[10px] text-orange-300 font-semibold mb-1.5">How in-store Apple Pay differs from online</p>
+              <div className="space-y-1">
+                {[
+                  ["NFC layer",        "Stripe Terminal SDK — not the browser ApplePaySession"],
+                  ["Reader",           "Ingenico P400 / BBPOS WisePOS E (Stripe-certified)"],
+                  ["Auth surface",     "Customer's iPhone/Watch — Face ID or Touch ID"],
+                  ["Subscription",     "Two-session: 2nd browser ApplePaySession after purchase"],
+                  ["One-session",      "Terminal tap + setup_future_usage saves card for billing"],
+                  ["Token type",       "Stripe PaymentMethod (card_present), not an Apple token"],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex gap-2">
+                    <span className="text-[10px] text-orange-400 font-mono shrink-0">{k}:</span>
+                    <span className="text-[10px] text-gray-400 leading-relaxed">{v}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex gap-1.5 mb-1">
+              <span className="text-[10px] font-semibold text-orange-300 bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-full">Two-Session</span>
+              <span className="text-[10px] text-gray-500 self-center">— NFC purchase then browser subscription</span>
+            </div>
+            <CodeBlock code={INSTORE_TWO_SESSION_CODE} />
+
+            <div className="flex gap-1.5 mt-2 mb-1">
+              <span className="text-[10px] font-semibold text-orange-300 bg-orange-500/10 border border-orange-500/20 px-2 py-1 rounded-full">One-Session</span>
+              <span className="text-[10px] text-gray-500 self-center">— single tap, saves card for subscription</span>
+            </div>
+            <CodeBlock code={INSTORE_ONE_SESSION_CODE} />
+
+            <div className="p-3 bg-gray-800 border border-gray-700 rounded-xl">
+              <p className="text-[10px] text-gray-400 font-semibold mb-1.5">Required Stripe Terminal setup</p>
+              <div className="space-y-1">
+                {[
+                  ["SDK",         "npm install @stripe/terminal-js"],
+                  ["Location",    "Register in Stripe Dashboard → Terminal → Locations"],
+                  ["Reader",      "Ingenico P400 · register via Dashboard or API"],
+                  ["Connection",  "Server generates connection token (POST /terminal/connection-token)"],
+                  ["Simulated",   "Use { simulated: true } in discoverReaders for testing"],
+                ].map(([k, v]) => (
+                  <div key={k} className="flex gap-2">
+                    <span className="text-[10px] text-gray-500 font-mono shrink-0">{k}:</span>
+                    <span className="text-[10px] text-gray-500 font-mono leading-relaxed">{v}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
