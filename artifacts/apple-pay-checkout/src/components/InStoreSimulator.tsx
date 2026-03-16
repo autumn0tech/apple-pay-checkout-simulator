@@ -276,60 +276,184 @@ function P400Terminal({ step, sessionMode }: { step: TerminalStep; sessionMode: 
   );
 }
 
-function PhoneMockup({ visible, isSubscription }: { visible: boolean; isSubscription: boolean }) {
-  return (
-    <div
-      className={`transition-all duration-500 ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-6 pointer-events-none"}`}
-    >
-      <div
-        className="rounded-[22px] overflow-hidden shadow-xl relative flex flex-col"
-        style={{
-          width: 130,
-          height: 200,
-          background: "#1c1c1e",
-          border: "1.5px solid rgba(255,255,255,0.12)",
-        }}
-      >
-        {/* Notch */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-16 h-4 bg-black rounded-b-xl z-10" />
+const APPLE_LOGO_PATH = "M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.3 269-317.3 71 0 130.5 46.4 174.5 46.4 42.7 0 109.2-49 190.5-49 30.7 0 134.4 2.9 210.7 92.3zm-209-181.3c31.3-37.2 53.7-88.1 53.7-139 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.3-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 134.9-71.6z";
 
-        {/* Apple Pay Sheet */}
-        <div className="absolute bottom-0 left-0 right-0 rounded-t-[18px] overflow-hidden" style={{ height: 160, background: "#f2f2f7" }}>
-          <div className="px-3 pt-3 pb-2 border-b border-gray-200">
-            <div className="flex items-center gap-1.5 mb-1">
-              <svg viewBox="0 0 814 1000" className="w-3 h-3 fill-gray-800"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.3 269-317.3 71 0 130.5 46.4 174.5 46.4 42.7 0 109.2-49 190.5-49 30.7 0 134.4 2.9 210.7 92.3zm-209-181.3c31.3-37.2 53.7-88.1 53.7-139 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.3-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 134.9-71.6z" /></svg>
+function FaceIdBrackets({ color = "rgba(255,255,255,0.7)", size = 36, thickness = 2, radius = 5 }: {
+  color?: string; size?: number; thickness?: number; radius?: number;
+}) {
+  const arm = size * 0.28;
+  const corners = [
+    { top: 0, left: 0, borderTop: thickness, borderLeft: thickness, borderTopLeftRadius: radius },
+    { top: 0, right: 0, borderTop: thickness, borderRight: thickness, borderTopRightRadius: radius },
+    { bottom: 0, left: 0, borderBottom: thickness, borderLeft: thickness, borderBottomLeftRadius: radius },
+    { bottom: 0, right: 0, borderBottom: thickness, borderRight: thickness, borderBottomRightRadius: radius },
+  ];
+  return (
+    <div style={{ position: "relative", width: size, height: size }}>
+      {corners.map((s, i) => (
+        <div key={i} style={{
+          position: "absolute", width: arm, height: arm,
+          borderColor: color, borderStyle: "solid", borderWidth: 0,
+          ...s,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function PhoneMockup({ visible, isSubscription, step }: {
+  visible: boolean;
+  isSubscription: boolean;
+  step: TerminalStep;
+}) {
+  const isAuthorizing = step === "authorizing" || step === "sub_authorizing";
+  const isApproved    = step === "purchase_approved" || step === "vaulting" || step === "complete";
+
+  return (
+    <div className={`transition-all duration-500 ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-6 pointer-events-none"}`}>
+      <style>{`
+        @keyframes faceIdScan {
+          0%   { top: 8%;  opacity: 0.9; }
+          45%  { top: 82%; opacity: 0.9; }
+          50%  { top: 82%; opacity: 0;   }
+          55%  { top: 8%;  opacity: 0;   }
+          100% { top: 8%;  opacity: 0.9; }
+        }
+        @keyframes faceIdPulse {
+          0%, 100% { opacity: 0.55; }
+          50%      { opacity: 1;    }
+        }
+        @keyframes approvedScale {
+          0%   { transform: scale(0.5); opacity: 0; }
+          60%  { transform: scale(1.15); opacity: 1; }
+          100% { transform: scale(1);   opacity: 1; }
+        }
+      `}</style>
+
+      <div
+        className="rounded-[22px] overflow-hidden shadow-xl relative"
+        style={{ width: 138, height: 240, background: "#111113", border: "1.5px solid rgba(255,255,255,0.13)" }}
+      >
+        {/* Dynamic Island */}
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20"
+          style={{ width: 46, height: 13, background: "#000", borderRadius: 8 }} />
+
+        {/* ── FACE ID SCANNING STATE ── */}
+        {isAuthorizing && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ paddingBottom: 110 }}>
+            {/* Brackets with pulse */}
+            <div style={{ animation: "faceIdPulse 1.4s ease-in-out infinite", position: "relative" }}>
+              <FaceIdBrackets color="#ffffff" size={44} thickness={2.5} radius={6} />
+              {/* Face silhouette */}
+              <div style={{
+                position: "absolute", inset: 0,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                gap: 3,
+              }}>
+                {/* Eyes */}
+                <div style={{ display: "flex", gap: 9, marginTop: 4 }}>
+                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(255,255,255,0.35)" }} />
+                  <div style={{ width: 5, height: 5, borderRadius: "50%", background: "rgba(255,255,255,0.35)" }} />
+                </div>
+                {/* Nose */}
+                <div style={{ width: 4, height: 4, borderRadius: "50%", background: "rgba(255,255,255,0.2)" }} />
+                {/* Mouth */}
+                <div style={{ width: 12, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.2)", marginTop: 1 }} />
+              </div>
+              {/* Animated scan line */}
+              <div style={{
+                position: "absolute", left: "5%", right: "5%", height: 1.5,
+                background: "linear-gradient(90deg, transparent, rgba(100,180,255,0.9), transparent)",
+                borderRadius: 1,
+                animation: "faceIdScan 2s linear infinite",
+                boxShadow: "0 0 6px rgba(100,180,255,0.7)",
+              }} />
+            </div>
+            {/* Status text */}
+            <p className="text-[8px] font-semibold mt-3" style={{ color: "rgba(255,255,255,0.55)", letterSpacing: "0.05em" }}>
+              {step === "sub_authorizing" ? "Double-tap to Pay" : "Look at iPhone to Pay"}
+            </p>
+          </div>
+        )}
+
+        {/* ── APPROVED STATE ── */}
+        {isApproved && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ paddingBottom: 100 }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: "50%",
+              background: "rgba(52,199,89,0.15)",
+              border: "1.5px solid rgba(52,199,89,0.6)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              animation: "approvedScale 0.4s cubic-bezier(.17,.67,.38,1.2) both",
+            }}>
+              <svg viewBox="0 0 24 24" style={{ width: 18, height: 18, fill: "none", stroke: "#34c759", strokeWidth: 2.5 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <p style={{ color: "#34c759", fontSize: 9, fontWeight: 700, letterSpacing: "0.08em" }}>APPROVED</p>
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 8 }}>$313.20</p>
+          </div>
+        )}
+
+        {/* ── APPLE PAY SHEET (bottom) ── */}
+        <div
+          className="absolute bottom-0 left-0 right-0 rounded-t-[18px] overflow-hidden"
+          style={{
+            height: isApproved ? 96 : 118,
+            background: isApproved ? "#f2f2f7" : "#f2f2f7",
+            transition: "height 0.4s ease",
+          }}
+        >
+          {/* Sheet header */}
+          <div className="px-3 pt-2.5 pb-1.5 border-b border-gray-200/80">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <svg viewBox="0 0 814 1000" className="w-3 h-3 fill-gray-800"><path d={APPLE_LOGO_PATH} /></svg>
               <span className="text-[9px] font-semibold text-gray-800">Pay</span>
             </div>
             <p className="text-[8px] text-gray-500">AudioHound Store</p>
           </div>
 
-          <div className="px-3 py-2 space-y-1">
-            <div className="flex justify-between text-[8px]">
-              <span className="text-gray-500">AirPods Pro</span>
-              <span className="text-gray-800 font-medium">$249.00</span>
-            </div>
-            <div className="flex justify-between text-[8px]">
-              <span className="text-gray-500">MagSafe</span>
-              <span className="text-gray-800 font-medium">$39.00</span>
-            </div>
-            {isSubscription && (
-              <div className="flex justify-between text-[8px]">
-                <span className="text-indigo-600">AudioHound Pro</span>
-                <span className="text-indigo-600 font-medium">Free trial</span>
+          {!isApproved && (
+            <div className="px-3 py-1.5 space-y-0.5">
+              <div className="flex justify-between text-[7.5px]">
+                <span className="text-gray-500">AirPods Pro</span>
+                <span className="text-gray-700 font-medium">$249.00</span>
               </div>
-            )}
-            <div className="flex justify-between text-[8px] pt-1 border-t border-gray-200">
-              <span className="text-gray-800 font-semibold">Total</span>
-              <span className="text-gray-800 font-bold">$313.20</span>
+              <div className="flex justify-between text-[7.5px]">
+                <span className="text-gray-500">MagSafe</span>
+                <span className="text-gray-700 font-medium">$39.00</span>
+              </div>
+              {isSubscription && (
+                <div className="flex justify-between text-[7.5px]">
+                  <span className="text-indigo-600">AudioHound Pro</span>
+                  <span className="text-indigo-600 font-medium">Free trial</span>
+                </div>
+              )}
+              <div className="flex justify-between text-[7.5px] pt-0.5 border-t border-gray-200">
+                <span className="text-gray-800 font-semibold">Total</span>
+                <span className="text-gray-800 font-bold">$313.20</span>
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="mx-3 mt-1 bg-black rounded-lg py-1.5 flex items-center justify-center gap-1">
-            <svg viewBox="0 0 814 1000" className="w-2.5 h-2.5 fill-white"><path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.3 269-317.3 71 0 130.5 46.4 174.5 46.4 42.7 0 109.2-49 190.5-49 30.7 0 134.4 2.9 210.7 92.3zm-209-181.3c31.3-37.2 53.7-88.1 53.7-139 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.3-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 134.9-71.6z" /></svg>
-            <span className="text-white text-[8px] font-semibold">Pay</span>
+          {/* Button */}
+          <div className={`mx-3 mt-1 rounded-lg py-1.5 flex items-center justify-center gap-1 transition-colors ${
+            isApproved ? "bg-green-500" : isAuthorizing ? "bg-gray-300" : "bg-black"
+          }`}>
+            {isApproved ? (
+              <svg viewBox="0 0 24 24" style={{ width: 10, height: 10, fill: "none", stroke: "white", strokeWidth: 2.5 }}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 814 1000" className={`w-2 h-2 ${isAuthorizing ? "fill-gray-400" : "fill-white"}`}><path d={APPLE_LOGO_PATH} /></svg>
+            )}
+            <span className={`text-[8px] font-semibold ${isApproved ? "text-white" : isAuthorizing ? "text-gray-400" : "text-white"}`}>
+              {isApproved ? "Done" : isAuthorizing ? "Authorizing…" : "Pay"}
+            </span>
           </div>
         </div>
       </div>
+
       <p className="text-center text-[9px] text-gray-400 mt-1.5">Customer's iPhone</p>
     </div>
   );
@@ -436,7 +560,7 @@ export default function InStoreSimulator({ onStepChange }: Props) {
         {/* Main visual area */}
         <div className="flex items-end justify-center gap-8 mb-6">
           <P400Terminal step={current.step} sessionMode={sessionMode} />
-          <PhoneMockup visible={phoneVisible} isSubscription={isSubAuth || sessionMode === "one-session"} />
+          <PhoneMockup visible={phoneVisible} isSubscription={isSubAuth || sessionMode === "one-session"} step={current.step} />
         </div>
 
         {/* Step progress */}
