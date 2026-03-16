@@ -4,7 +4,7 @@ import ApplePaySheet from "@/components/ApplePaySheet";
 import DevPanel from "@/components/DevPanel";
 import OrderSummary from "@/components/OrderSummary";
 import SimulationGuide from "@/components/SimulationGuide";
-import InStoreSimulator from "@/components/InStoreSimulator";
+import InStoreSimulator, { type InStoreProvider } from "@/components/InStoreSimulator";
 
 export type PaymentStatus = "idle" | "processing" | "success" | "failed";
 export type SubStatus = "none" | "upsell" | "processing" | "success" | "declined";
@@ -37,6 +37,7 @@ export default function Checkout() {
   const [devPanelOpen, setDevPanelOpen] = useState(true);
   const [currentStep, setCurrentStep] = useState<string>("idle");
   const [sheetMode, setSheetMode] = useState<SheetMode>("onetime");
+  const [inStoreProvider, setInStoreProvider] = useState<InStoreProvider>("stripe");
   const [manualPayStatus, setManualPayStatus] = useState<"idle" | "processing" | "confirmed">("idle");
   const [manualSubOffer, setManualSubOffer] = useState<"hidden" | "visible" | "dismissed">("hidden");
   const manualTxId = useRef("SIM-" + Math.random().toString(36).slice(2, 10).toUpperCase()).current;
@@ -200,14 +201,87 @@ export default function Checkout() {
               })}
             </div>
 
-            {/* Apple Pay session rules reference grid */}
+            {/* Rules reference grid — context-aware */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
-                <span className="text-sm font-semibold text-gray-900">Apple Pay Session Rules</span>
+                <span className="text-sm font-semibold text-gray-900">
+                  {flowMode === "in-store" ? "In-Store Terminal Rules" : "Apple Pay Session Rules"}
+                </span>
                 <span className="text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full uppercase tracking-wide">Reference</span>
+                {flowMode === "in-store" && (
+                  <span className={`ml-auto text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+                    inStoreProvider === "stripe"
+                      ? "bg-violet-50 text-violet-600 border-violet-200"
+                      : "bg-sky-50 text-sky-600 border-sky-200"
+                  }`}>
+                    {inStoreProvider === "stripe" ? "Stripe Terminal" : "Braintree / PayPal"}
+                  </span>
+                )}
               </div>
               <div className="divide-y divide-gray-50">
-                {[
+                {(flowMode === "in-store" ? (inStoreProvider === "stripe" ? [
+                  {
+                    scenario: "setup_future_usage: 'off_session' on PaymentIntent",
+                    note: "Vaults the card_present PM for server-side subscription billing after the tap",
+                    allowed: true,
+                    source: "Stripe Terminal",
+                  },
+                  {
+                    scenario: "card_present PM → stripe.subscriptions.create()",
+                    note: "Requires generated_card via network tokenization — not guaranteed on all cards",
+                    allowed: null,
+                    source: "Stripe docs",
+                  },
+                  {
+                    scenario: "Reusing a card_present cryptogram for a second on-session charge",
+                    note: "Cryptograms are single-use — customer must tap again for a new authorization",
+                    allowed: false,
+                    source: "Apple ToS · Stripe",
+                  },
+                  {
+                    scenario: "Apple Pay at terminal → recurringPaymentRequest MPAN",
+                    note: "In-store tap yields a DPAN (Device PAN). MPAN requires online Apple Pay with recurringPaymentRequest",
+                    allowed: false,
+                    source: "Apple · Stripe",
+                  },
+                  {
+                    scenario: "Digital wallet card_present vault → 24hr auth expiry",
+                    note: "Saved card_present tokens from Apple Pay have a 24-hour MIT auth window — build re-auth logic",
+                    allowed: null,
+                    source: "Stripe Terminal",
+                  },
+                ] : [
+                  {
+                    scenario: "requestChargeFromInStoreReader + vaultPaymentMethodAfterTransacting",
+                    note: "Charges the cart and vaults the card in one NFC tap — ON_SUCCESSFUL_TRANSACTION triggers vault only if charge succeeds",
+                    allowed: true,
+                    source: "Braintree API",
+                  },
+                  {
+                    scenario: "chargePaymentMethod(paymentMethodId) for future subscription charges",
+                    note: "MIT flag is auto-applied; future charges are card-not-present (CNP) pricing — not card-present rates",
+                    allowed: true,
+                    source: "Braintree API",
+                  },
+                  {
+                    scenario: "paymentMethodId token for customer analytics or deduplication",
+                    note: "paymentMethodId is unique per vault request — use uniqueNumberIdentifier (stable per card number) for analytics",
+                    allowed: false,
+                    source: "Braintree docs",
+                  },
+                  {
+                    scenario: "Digital wallet vault → MIT flag + 24hr authorizationExpiresAt",
+                    note: "Apple Pay, Google Pay, Samsung Pay taps on reader auto-apply MIT flag — parse authorizationExpiresAt for re-auth logic",
+                    allowed: null,
+                    source: "Braintree docs",
+                  },
+                  {
+                    scenario: "Apple Pay at reader → MPAN for subscriptions",
+                    note: "In-store NFC tap yields a DPAN only. MPAN (Merchant PAN) requires online Apple Pay with recurringPaymentRequest",
+                    allowed: false,
+                    source: "Apple · Braintree",
+                  },
+                ]) : [
                   {
                     scenario: "Single session: product total + recurringPaymentRequest",
                     note: "One-session flow — this simulator's combined mode",
@@ -232,10 +306,10 @@ export default function Checkout() {
                     allowed: false,
                     source: "Apple ToS · Stripe docs",
                   },
-                ].map((row, i) => (
+                ]).map((row, i) => (
                   <div key={i} className="flex items-start gap-3 px-5 py-3">
-                    <span className={`mt-0.5 shrink-0 text-base leading-none ${row.allowed ? "text-green-500" : "text-red-500"}`}>
-                      {row.allowed ? "✅" : "❌"}
+                    <span className={`mt-0.5 shrink-0 text-base leading-none ${row.allowed === true ? "text-green-500" : row.allowed === false ? "text-red-500" : "text-amber-500"}`}>
+                      {row.allowed === true ? "✅" : row.allowed === false ? "❌" : "⚠️"}
                     </span>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-gray-900 leading-snug font-mono">{row.scenario}</p>
@@ -251,7 +325,7 @@ export default function Checkout() {
 
             {/* In-Store P400 simulator */}
             {flowMode === "in-store" && (
-              <InStoreSimulator onStepChange={setCurrentStep} />
+              <InStoreSimulator onStepChange={setCurrentStep} provider={inStoreProvider} onProviderChange={setInStoreProvider} />
             )}
 
             {/* Simulation guide — online flows only */}
@@ -751,7 +825,7 @@ export default function Checkout() {
             </button>
 
             {devPanelOpen && (
-              <DevPanel currentStep={currentStep} total={total} devMode={devMode} />
+              <DevPanel currentStep={currentStep} total={total} devMode={devMode} inStoreProvider={inStoreProvider} />
             )}
           </div>
         </div>
