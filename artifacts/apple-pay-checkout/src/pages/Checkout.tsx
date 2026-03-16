@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useLocation } from "wouter";
 import ApplePaySheet from "@/components/ApplePaySheet";
 import DevPanel from "@/components/DevPanel";
 import OrderSummary from "@/components/OrderSummary";
@@ -38,6 +39,7 @@ export default function Checkout() {
   const [manualPayStatus, setManualPayStatus] = useState<"idle" | "processing" | "confirmed">("idle");
   const [manualSubOffer, setManualSubOffer] = useState<"hidden" | "visible" | "dismissed">("hidden");
   const manualTxId = useRef("SIM-" + Math.random().toString(36).slice(2, 10).toUpperCase()).current;
+  const [, navigate] = useLocation();
 
   const subtotal = CART_ITEMS.reduce((sum, item) => sum + item.price * item.qty, 0);
   const tax = subtotal * TAX_RATE;
@@ -133,9 +135,20 @@ export default function Checkout() {
       {/* Top Nav */}
       <nav className="bg-white/80 backdrop-blur-xl border-b border-gray-200/80 sticky top-0 z-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🎵</span>
-            <span className="text-gray-900 font-semibold text-base tracking-tight">AudioHound</span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate("/")}
+              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-700 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" className="w-4 h-4 fill-none stroke-current stroke-2" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="w-px h-4 bg-gray-200" />
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🎵</span>
+              <span className="text-gray-900 font-semibold text-base tracking-tight">AudioHound</span>
+            </div>
           </div>
           <span className="text-sm text-gray-500 font-medium">Secure Checkout</span>
           <div className="flex items-center gap-1 text-gray-400">

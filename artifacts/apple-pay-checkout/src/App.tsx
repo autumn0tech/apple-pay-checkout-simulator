@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
+import Landing from "@/pages/Landing";
 import Checkout from "@/pages/Checkout";
 
 const queryClient = new QueryClient();
@@ -10,7 +11,8 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Checkout} />
+      <Route path="/" component={Landing} />
+      <Route path="/apple-pay" component={Checkout} />
       <Route component={NotFound} />
     </Switch>
   );
