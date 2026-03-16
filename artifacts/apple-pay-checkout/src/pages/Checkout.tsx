@@ -240,7 +240,7 @@ export default function Checkout() {
             <SimulationGuide flowMode={flowMode} />
 
             {/* Express Checkout */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            {manualPayStatus === "idle" && <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 h-px bg-gray-200"></div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-widest">Express Checkout</p>
@@ -304,7 +304,7 @@ export default function Checkout() {
                   </p>
                 </>
               )}
-            </div>
+            </div>}
 
             {/* TWO-SESSION: subscription upsell (appears after one-time payment) */}
             {flowMode === "two-session" && subStatus === "upsell" && (
