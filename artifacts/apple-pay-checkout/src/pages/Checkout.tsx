@@ -419,6 +419,105 @@ export default function Checkout() {
                 </button>
               </div>
             )}
+
+            {/* Developer References */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-900">Developer References</span>
+                <span className="text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full uppercase tracking-wide">Docs</span>
+              </div>
+
+              {/* Apple */}
+              <div className="px-5 pt-4 pb-2">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Apple Developer</p>
+                <div className="space-y-1">
+                  {[
+                    {
+                      label: "Apple Pay on the Web — Overview",
+                      url: "https://developer.apple.com/documentation/apple_pay_on_the_web",
+                      desc: "Entry point for the Apple Pay JS API and merchant setup",
+                    },
+                    {
+                      label: "ApplePaySession",
+                      url: "https://developer.apple.com/documentation/applepayontheweb/applepaysession",
+                      desc: "Core class for initiating and managing Apple Pay sessions",
+                    },
+                    {
+                      label: "recurringPaymentRequest",
+                      url: "https://developer.apple.com/documentation/applepayontheweb/applepaypaymentrequest/3955946-recurringpaymentrequest",
+                      desc: "API property for setting up subscription billing in a session",
+                    },
+                    {
+                      label: "Apple Pay Merchant Tokens (MPAN)",
+                      url: "https://developer.apple.com/apple-pay/merchant-tokens/",
+                      desc: "Cloud tokens for reliable recurring billing across devices",
+                    },
+                  ].map((link) => (
+                    <a
+                      key={link.url}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors group"
+                    >
+                      <svg viewBox="0 0 814 1000" className="w-3.5 h-3.5 fill-current text-gray-400 group-hover:text-gray-700 shrink-0 mt-0.5 transition-colors" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.3 269-317.3 71 0 130.5 46.4 174.5 46.4 42.7 0 109.2-49 190.5-49 30.7 0 134.4 2.9 210.7 92.3zm-209-181.3c31.3-37.2 53.7-88.1 53.7-139 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.3-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 134.9-71.6z" />
+                      </svg>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-blue-600 group-hover:text-blue-700 leading-snug">{link.label}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">{link.desc}</p>
+                      </div>
+                      <svg viewBox="0 0 24 24" className="w-3 h-3 fill-none stroke-current stroke-2 text-gray-300 group-hover:text-gray-400 shrink-0 mt-1 transition-colors" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  ))}
+                </div>
+              </div>
+
+              {/* Stripe */}
+              <div className="px-5 pt-3 pb-4">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Stripe</p>
+                <div className="space-y-1">
+                  {[
+                    {
+                      label: "Apple Pay Recurring Transactions",
+                      url: "https://docs.stripe.com/apple-pay/apple-pay-recurring",
+                      desc: "Saved payments restriction, MPAN vs DPAN, and cryptogram expiry",
+                    },
+                    {
+                      label: "Apple Pay Merchant Tokens (Stripe)",
+                      url: "https://docs.stripe.com/apple-pay/merchant-tokens",
+                      desc: "How Stripe provisions and manages MPANs for subscriptions",
+                    },
+                    {
+                      label: "Apple Pay Best Practices",
+                      url: "https://docs.stripe.com/apple-pay/best-practices",
+                      desc: "Authorization rate improvements and integration tips",
+                    },
+                  ].map((link) => (
+                    <a
+                      key={link.url}
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-start gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 transition-colors group"
+                    >
+                      <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0 mt-0.5 transition-colors" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.594-7.305h.003z" fill="#635BFF"/>
+                      </svg>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-blue-600 group-hover:text-blue-700 leading-snug">{link.label}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5 leading-relaxed">{link.desc}</p>
+                      </div>
+                      <svg viewBox="0 0 24 24" className="w-3 h-3 fill-none stroke-current stroke-2 text-gray-300 group-hover:text-gray-400 shrink-0 mt-1 transition-colors" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Right: Order Summary + Dev Panel */}
