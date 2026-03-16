@@ -588,6 +588,29 @@ export default function InStoreSimulator({ onStepChange, provider, onProviderCha
         </div>
       </div>
 
+      {/* Braintree consent disclosure — must appear before the NFC tap */}
+      {provider === "braintree" && (
+        <div className="px-5 py-3.5 bg-sky-50 border-b border-sky-100">
+          <div className="flex gap-2.5 items-start">
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-sky-600 stroke-2 shrink-0 mt-0.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-bold text-sky-800 mb-1">Consent must be captured before this tap</p>
+              <p className="text-[10px] text-sky-700 leading-relaxed mb-2">
+                Braintree policy: vaulting Apple Pay is only permitted when the customer explicitly consents to future merchant-initiated charges <em>during checkout</em> — before the NFC reader activates. Charging a vaulted PM when the customer is present and can authorize in real-time will result in declines.
+              </p>
+              <div className="bg-white border border-sky-200 rounded-lg px-3 py-2">
+                <p className="text-[9px] text-sky-500 font-semibold uppercase tracking-widest mb-1">Typical checkout disclosure</p>
+                <p className="text-[10px] text-gray-600 leading-relaxed italic">
+                  "By saving your Apple Pay card, you authorize AudioHound to charge your stored payment method for future subscription renewals. You may cancel at any time via account settings."
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="p-5">
         {/* Main visual area */}
         <div className="flex items-end justify-center gap-8 mb-6">
@@ -723,6 +746,10 @@ export default function InStoreSimulator({ onStepChange, provider, onProviderCha
                   detail: "Use Stripe's Terminal simulator (simulated: true) and confirm a generated_card is attached to the Customer after payment before building subscription activation logic.",
                 },
               ] : [
+                {
+                  label: "Explicit customer consent required — before the tap",
+                  detail: "Braintree policy: vaulting Apple Pay for recurring billing requires the customer's explicit consent to future MIT charges at checkout. Do not vault if the customer is present and able to authorize in real-time — Braintree states this will result in declines.",
+                },
                 {
                   label: "MIT flag auto-applied",
                   detail: "When Apple Pay, Google Pay, or Samsung Pay are tapped on a reader and vaulted, subsequent chargePaymentMethod calls automatically receive a merchant-initiated transaction (MIT) flag.",
