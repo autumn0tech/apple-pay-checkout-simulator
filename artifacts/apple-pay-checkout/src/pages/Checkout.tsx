@@ -28,7 +28,7 @@ const APPLECAREPLUS = {
 };
 
 export default function Checkout() {
-  const [flowMode, setFlowMode] = useState<FlowMode>("two-session");
+  const [flowMode, setFlowMode] = useState<FlowMode>("one-session");
   const [showSheet, setShowSheet] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("idle");
   const [subStatus, setSubStatus] = useState<SubStatus>("none");
@@ -167,7 +167,7 @@ export default function Checkout() {
 
             {/* Flow mode switcher */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-1.5 flex gap-1">
-              {(["two-session", "one-session"] as FlowMode[]).map((mode) => {
+              {(["one-session", "two-session"] as FlowMode[]).map((mode) => {
                 const active = flowMode === mode;
                 const label = mode === "two-session" ? "Two-Session Flow" : "One-Session Flow";
                 const sublabel = mode === "two-session" ? "Purchase → post-purchase upsell" : "Subscription as SKU at checkout";
