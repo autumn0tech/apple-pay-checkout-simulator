@@ -8,6 +8,8 @@ type TerminalStep =
   | "tap_detected"
   | "authorizing"
   | "purchase_approved"
+  | "vaulting"
+  | "sub_activating"
   | "upsell_prompt"
   | "upsell_processing"
   | "sub_authorizing"
@@ -77,6 +79,30 @@ function TerminalScreen({ step, sessionMode }: { step: TerminalStep; sessionMode
           {step === "sub_authorizing" ? "Authorizing Subscription…" : "Awaiting Authorization…"}
         </p>
         <p className="text-[10px] text-white/40">Customer approving on device</p>
+      </div>
+    );
+  }
+
+  if (step === "vaulting") {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 select-none px-3">
+        <div className="w-6 h-6 border-2 border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin" />
+        <p className="text-xs font-semibold text-indigo-300 mt-1">Vaulting Card…</p>
+        <p className="text-[10px] text-white/40 text-center leading-relaxed">
+          Stripe stores a card_present PM via setup_future_usage
+        </p>
+      </div>
+    );
+  }
+
+  if (step === "sub_activating") {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-2 select-none px-3">
+        <div className="w-6 h-6 border-2 border-indigo-400/40 border-t-indigo-400 rounded-full animate-spin" />
+        <p className="text-xs font-semibold text-indigo-300 mt-1">Activating Subscription…</p>
+        <p className="text-[10px] text-white/40 text-center leading-relaxed">
+          Server creates Subscription using vaulted PM off-session
+        </p>
       </div>
     );
   }
@@ -174,6 +200,8 @@ function P400Terminal({ step, sessionMode }: { step: TerminalStep; sessionMode: 
               ? "linear-gradient(135deg, #1c1c2e 0%, #16213e 100%)"
               : step === "purchase_approved"
               ? "linear-gradient(135deg, #0a2e1a 0%, #0d3321 100%)"
+              : step === "vaulting" || step === "sub_activating"
+              ? "linear-gradient(135deg, #1a1040 0%, #221060 100%)"
               : step === "complete"
               ? "linear-gradient(135deg, #12103a 0%, #1a1050 100%)"
               : step === "upsell_prompt" || step === "upsell_processing"
@@ -197,6 +225,8 @@ function P400Terminal({ step, sessionMode }: { step: TerminalStep; sessionMode: 
             className={`text-xs transition-all duration-500 ${
               step === "tap_detected" || step === "upsell_processing"
                 ? "text-blue-400 animate-pulse"
+                : step === "vaulting" || step === "sub_activating"
+                ? "text-indigo-400"
                 : "text-white/20"
             }`}
           >
@@ -216,6 +246,8 @@ function P400Terminal({ step, sessionMode }: { step: TerminalStep; sessionMode: 
             backgroundColor:
               step === "purchase_approved" || step === "complete"
                 ? "#22c55e"
+                : step === "vaulting" || step === "sub_activating"
+                ? "#818cf8"
                 : step === "authorizing" || step === "sub_authorizing"
                 ? "#f59e0b"
                 : step === "tap_detected" || step === "upsell_processing"
@@ -224,6 +256,8 @@ function P400Terminal({ step, sessionMode }: { step: TerminalStep; sessionMode: 
             boxShadow:
               step === "purchase_approved" || step === "complete"
                 ? "0 0 6px #22c55e"
+                : step === "vaulting" || step === "sub_activating"
+                ? "0 0 6px #818cf8"
                 : step === "authorizing" || step === "sub_authorizing"
                 ? "0 0 6px #f59e0b"
                 : step === "tap_detected" || step === "upsell_processing"
@@ -314,11 +348,14 @@ const TWO_SESSION_STEPS: { step: TerminalStep; label: string; desc: string }[] =
 ];
 
 const ONE_SESSION_STEPS: { step: TerminalStep; label: string; desc: string }[] = [
-  { step: "idle",         label: "Terminal Ready",       desc: "P400 waiting for transaction" },
-  { step: "amount_shown", label: "Amount + Sub Shown",   desc: "Combined total with trial line item" },
-  { step: "tap_detected", label: "NFC Tap Detected",     desc: "Customer taps iPhone/Watch" },
-  { step: "authorizing",  label: "Awaiting Auth",        desc: "Apple Pay sheet shows payment + subscription" },
-  { step: "complete",     label: "Payment + Sub Active", desc: "One tap covers charge + recurring enrollment" },
+  { step: "idle",          label: "Terminal Ready",       desc: "P400 waiting for transaction" },
+  { step: "amount_shown",  label: "Amount + Sub Shown",   desc: "Cashier enters total — trial line item displayed" },
+  { step: "tap_detected",  label: "NFC Tap Detected",     desc: "Customer taps iPhone / Apple Watch on reader" },
+  { step: "authorizing",   label: "Face ID / Touch ID",   desc: "Apple Pay sheet on customer's device — one auth for both charge and card vault" },
+  { step: "purchase_approved", label: "Payment Approved", desc: "Cryptogram verified — $313.20 captured" },
+  { step: "vaulting",      label: "Card Vaulted",         desc: "Stripe stores the card_present PM via setup_future_usage: 'off_session'" },
+  { step: "sub_activating",label: "Subscription Created", desc: "Server calls stripe.subscriptions.create() using the vaulted PM — no second tap needed" },
+  { step: "complete",      label: "Complete",             desc: "Payment captured · card vaulted · subscription active — all from one NFC tap" },
 ];
 
 interface Props {
@@ -334,9 +371,12 @@ export default function InStoreSimulator({ onStepChange }: Props) {
   const current = steps[stepIndex];
 
   const AUTO_ADVANCE: Partial<Record<TerminalStep, number>> = {
-    tap_detected: 1400,
-    authorizing: 2000,
-    sub_authorizing: 1800,
+    tap_detected:    1800,
+    authorizing:     3000,
+    vaulting:        2400,
+    sub_activating:  2800,
+    sub_authorizing: 2000,
+    ...(sessionMode === "one-session" ? { purchase_approved: 1200 } : {}),
   };
 
   useEffect(() => {
@@ -361,7 +401,10 @@ export default function InStoreSimulator({ onStepChange }: Props) {
 
   const isAutoStep = !!AUTO_ADVANCE[current.step];
   const isLast = stepIndex === steps.length - 1;
-  const phoneVisible = current.step === "authorizing" || current.step === "sub_authorizing";
+  const phoneVisible =
+    current.step === "authorizing" ||
+    current.step === "sub_authorizing" ||
+    (sessionMode === "one-session" && (current.step === "purchase_approved" || current.step === "vaulting"));
   const isSubAuth = current.step === "sub_authorizing";
 
   return (
@@ -468,10 +511,10 @@ export default function InStoreSimulator({ onStepChange }: Props) {
               </>
             ) : (
               <>
-                {current.step === "idle" ? "Start Transaction" :
-                 current.step === "amount_shown" ? "Simulate NFC Tap →" :
-                 current.step === "purchase_approved" ? "Show Subscription Offer →" :
-                 current.step === "upsell_prompt" ? "Customer Accepts →" :
+                {current.step === "idle"             ? "Start Transaction →" :
+                 current.step === "amount_shown"     ? "Simulate NFC Tap →" :
+                 current.step === "purchase_approved" && sessionMode === "two-session" ? "Show Subscription Offer →" :
+                 current.step === "upsell_prompt"    ? "Customer Accepts →" :
                  "Next →"}
               </>
             )}
@@ -479,12 +522,68 @@ export default function InStoreSimulator({ onStepChange }: Props) {
         </div>
       </div>
 
+      {/* Recurring billing limitations — one-session only */}
+      {sessionMode === "one-session" && (
+        <div className="px-5 pb-5">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <div className="flex items-center gap-1.5 mb-3">
+              <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 fill-none stroke-amber-600 stroke-2 shrink-0">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide">
+                card_present limitations for recurring billing
+              </p>
+              <a
+                href="https://docs.stripe.com/terminal/features/saving-payment-details/overview"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto text-[10px] text-amber-600 hover:text-amber-800 underline underline-offset-2 shrink-0"
+              >
+                Stripe docs ↗
+              </a>
+            </div>
+            <ul className="space-y-2">
+              {[
+                {
+                  label: "card_present ≠ card",
+                  detail: "The vaulted PaymentMethod is type card_present. Stripe Subscriptions require a card or generated_card PM — Stripe auto-generates one via network tokenization if the card network supports it.",
+                },
+                {
+                  label: "Network tokenization is not guaranteed",
+                  detail: "A generated_card PM is only produced if the card's network (Visa, Mastercard, etc.) and issuer support it. Cards that don't qualify cannot be billed off-session using this approach.",
+                },
+                {
+                  label: "Apple Pay at Terminal issues a DPAN, not an MPAN",
+                  detail: "In-store Apple Pay uses a Device PAN (cryptogram per tap). Online Apple Pay with recurringPaymentRequest can yield an MPAN — a persistent merchant token better suited for subscriptions.",
+                },
+                {
+                  label: "24-hour authorization window",
+                  detail: "Saved card_present tokens from digital wallets have a 24-hour auth expiry. Build re-auth logic (check authorizationExpiresAt) for any captured-later flows.",
+                },
+                {
+                  label: "Test before going live",
+                  detail: "Use Stripe's Terminal simulator (simulated: true) and confirm a generated_card is attached to the Customer after payment before building subscription activation logic.",
+                },
+              ].map(({ label, detail }) => (
+                <li key={label} className="flex gap-2">
+                  <span className="text-amber-500 mt-0.5 shrink-0 text-[11px]">▸</span>
+                  <div>
+                    <span className="text-[11px] font-semibold text-amber-900">{label} — </span>
+                    <span className="text-[11px] text-amber-700">{detail}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       {/* Info footer */}
       <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center gap-2">
         <span className="text-[10px] text-gray-400">
           {sessionMode === "two-session"
-            ? "2 separate ApplePaySession calls — one for the charge, one for the recurring enrollment"
-            : "1 ApplePaySession with recurringPaymentRequest embedded in the initial request"}
+            ? "Two terminal.collectPaymentMethod calls — one per NFC tap. The subscription NFC tap triggers a second Apple Pay auth on the customer's device."
+            : "One terminal.collectPaymentMethod call with setup_future_usage: 'off_session' — single NFC tap captures payment and vaults the card for server-side subscription billing."}
         </span>
       </div>
     </div>
