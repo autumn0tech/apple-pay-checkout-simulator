@@ -6,6 +6,8 @@ import SimulationGuide from "@/components/SimulationGuide";
 
 export type PaymentStatus = "idle" | "processing" | "success" | "failed";
 export type SubStatus = "none" | "upsell" | "processing" | "success" | "declined";
+export type FlowMode = "two-session" | "one-session";
+export type SheetMode = "onetime" | "recurring" | "combined";
 
 const CART_ITEMS = [
   { id: 1, name: "AirPods Pro (2nd generation)", price: 249.00, qty: 1, image: "🎧" },
@@ -14,7 +16,7 @@ const CART_ITEMS = [
 
 const TAX_RATE = 0.0875;
 
-const APPLECAREPLUS = {
+export const APPLECAREPLUS = {
   name: "AppleCare+ for AirPods Pro",
   description: "Accidental damage coverage, priority support, and battery service.",
   trialAmount: "0.00",
@@ -22,33 +24,51 @@ const APPLECAREPLUS = {
   interval: "month",
   trialLabel: "First month free",
   emoji: "🛡️",
+  sku: "APPLECARE-AIRPODS-PRO-MONTHLY",
 };
 
 export default function Checkout() {
+  const [flowMode, setFlowMode] = useState<FlowMode>("two-session");
   const [showSheet, setShowSheet] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("idle");
   const [subStatus, setSubStatus] = useState<SubStatus>("none");
   const [devPanelOpen, setDevPanelOpen] = useState(true);
   const [currentStep, setCurrentStep] = useState<string>("idle");
-  const [sheetMode, setSheetMode] = useState<"onetime" | "recurring">("onetime");
+  const [sheetMode, setSheetMode] = useState<SheetMode>("onetime");
 
   const subtotal = CART_ITEMS.reduce((sum, item) => sum + item.price * item.qty, 0);
   const tax = subtotal * TAX_RATE;
   const total = subtotal + tax;
 
+  const handleFlowModeChange = (mode: FlowMode) => {
+    setFlowMode(mode);
+    setPaymentStatus("idle");
+    setSubStatus("none");
+    setCurrentStep("idle");
+    setShowSheet(false);
+  };
+
   const handleApplePayClick = () => {
-    setSheetMode("onetime");
+    if (flowMode === "one-session") {
+      setSheetMode("combined");
+      setCurrentStep("validateMerchant");
+    } else {
+      setSheetMode("onetime");
+      setCurrentStep("validateMerchant");
+    }
     setShowSheet(true);
     setPaymentStatus("processing");
-    setCurrentStep("validateMerchant");
   };
 
   const handleSheetSuccess = () => {
     setShowSheet(false);
-    if (sheetMode === "onetime") {
+    if (sheetMode === "combined") {
+      setPaymentStatus("success");
+      setSubStatus("success");
+      setCurrentStep("combinedAuthorized");
+    } else if (sheetMode === "onetime") {
       setPaymentStatus("success");
       setCurrentStep("authorized");
-      // After one-time payment, show subscription upsell
       setTimeout(() => setSubStatus("upsell"), 600);
     } else {
       setSubStatus("success");
@@ -58,7 +78,7 @@ export default function Checkout() {
 
   const handleSheetCancel = () => {
     setShowSheet(false);
-    if (sheetMode === "onetime") {
+    if (sheetMode === "combined" || sheetMode === "onetime") {
       setPaymentStatus("idle");
       setCurrentStep("idle");
     } else {
@@ -80,10 +100,15 @@ export default function Checkout() {
     setCurrentStep("idle");
   };
 
-  const devMode =
-    currentStep.startsWith("recurring") || subStatus === "success"
+  const devMode: "onetime" | "recurring" | "combined" =
+    flowMode === "one-session"
+      ? "combined"
+      : currentStep.startsWith("recurring") || subStatus === "success"
       ? "recurring"
       : "onetime";
+
+  const isSuccess = paymentStatus === "success";
+  const isCombinedSuccess = isSuccess && flowMode === "one-session";
 
   return (
     <div
@@ -113,10 +138,81 @@ export default function Checkout() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Form + Apple Pay */}
           <div className="lg:col-span-2 space-y-4">
-            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Checkout</h1>
+            <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">Digital Payments Simulator</h1>
+
+            {/* Flow mode switcher */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-1.5 flex gap-1">
+              {(["two-session", "one-session"] as FlowMode[]).map((mode) => {
+                const active = flowMode === mode;
+                const label = mode === "two-session" ? "Two-Session Flow" : "One-Session Flow";
+                const sublabel = mode === "two-session" ? "Purchase → post-purchase upsell" : "Subscription as SKU at checkout";
+                const activeClass = mode === "two-session"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-indigo-600 text-white shadow-sm";
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => handleFlowModeChange(mode)}
+                    className={`flex-1 px-4 py-2.5 rounded-xl text-left transition-all ${active ? activeClass : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"}`}
+                  >
+                    <p className={`text-xs font-semibold leading-tight ${active ? "text-white" : "text-gray-700"}`}>{label}</p>
+                    <p className={`text-[10px] mt-0.5 leading-tight ${active ? "text-white/70" : "text-gray-400"}`}>{sublabel}</p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Apple Pay session rules reference grid */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+                <span className="text-sm font-semibold text-gray-900">Apple Pay Session Rules</span>
+                <span className="text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full uppercase tracking-wide">Reference</span>
+              </div>
+              <div className="divide-y divide-gray-50">
+                {[
+                  {
+                    scenario: "Single session: product total + recurringPaymentRequest",
+                    note: "One-session flow — this simulator's combined mode",
+                    allowed: true,
+                    source: "Apple API",
+                  },
+                  {
+                    scenario: "recurringPaymentRequest + automaticReloadPaymentRequest in same request",
+                    note: "Results in an API error and cancels the payment request",
+                    allowed: false,
+                    source: "Apple API",
+                  },
+                  {
+                    scenario: "recurringPaymentRequest + multiTokenContexts in same request",
+                    note: "Results in an API error and cancels the payment request",
+                    allowed: false,
+                    source: "Apple API",
+                  },
+                  {
+                    scenario: "Reusing a stored Apple Pay token for an on-session payment",
+                    note: "Customer is present — must re-authorize with a fresh cryptogram",
+                    allowed: false,
+                    source: "Apple ToS · Stripe docs",
+                  },
+                ].map((row, i) => (
+                  <div key={i} className="flex items-start gap-3 px-5 py-3">
+                    <span className={`mt-0.5 shrink-0 text-base leading-none ${row.allowed ? "text-green-500" : "text-red-500"}`}>
+                      {row.allowed ? "✅" : "❌"}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-900 leading-snug font-mono">{row.scenario}</p>
+                      <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{row.note}</p>
+                    </div>
+                    <span className="shrink-0 text-[9px] font-semibold text-gray-400 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded-full whitespace-nowrap mt-0.5">
+                      {row.source}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             {/* Simulation guide */}
-            <SimulationGuide />
+            <SimulationGuide flowMode={flowMode} />
 
             {/* Express Checkout */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
@@ -126,7 +222,27 @@ export default function Checkout() {
                 <div className="flex-1 h-px bg-gray-200"></div>
               </div>
 
-              {paymentStatus === "success" ? (
+              {/* ONE-SESSION success: combined result card */}
+              {isCombinedSuccess ? (
+                <div className="text-center py-4">
+                  <div className="w-14 h-14 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <svg viewBox="0 0 24 24" className="w-7 h-7 text-indigo-500 fill-none stroke-current stroke-2" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-1">Payment + Subscription Authorized!</h3>
+                  <p className="text-sm text-gray-500 mb-1">
+                    Transaction:{" "}
+                    <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">
+                      sim_{Math.random().toString(36).slice(2, 10).toUpperCase()}
+                    </span>
+                  </p>
+                  <p className="text-xs text-gray-400 mb-2">${total.toFixed(2)} charged · AirPods Pro + MagSafe + AppleCare+</p>
+                  <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-full">
+                    <span>🛡️</span> AppleCare+ active · $3.99/mo after trial
+                  </div>
+                </div>
+              ) : isSuccess && flowMode === "two-session" ? (
                 <div className="text-center py-4">
                   <div className="w-14 h-14 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
                     <svg viewBox="0 0 24 24" className="w-7 h-7 text-green-500 fill-none stroke-current stroke-2" xmlns="http://www.w3.org/2000/svg">
@@ -152,19 +268,22 @@ export default function Checkout() {
                     <svg viewBox="0 0 814 1000" className="w-5 h-5 fill-white" xmlns="http://www.w3.org/2000/svg">
                       <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.3 269-317.3 71 0 130.5 46.4 174.5 46.4 42.7 0 109.2-49 190.5-49 30.7 0 134.4 2.9 210.7 92.3zm-209-181.3c31.3-37.2 53.7-88.1 53.7-139 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.3-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 134.9-71.6z" />
                     </svg>
-                    <span>Pay</span>
+                    <span>
+                      {flowMode === "one-session" ? "Pay + Subscribe" : "Pay"}
+                    </span>
                   </button>
                   <p className="text-center text-xs text-gray-400 mt-3">
-                    Touch ID or Face ID required · Simulated demo environment
+                    {flowMode === "one-session"
+                      ? "Authorizes payment + AppleCare+ subscription in one tap"
+                      : "Touch ID or Face ID required · Simulated demo environment"}
                   </p>
                 </>
               )}
             </div>
 
-            {/* ── SUBSCRIPTION UPSELL ── appears after one-time payment */}
-            {subStatus === "upsell" && (
+            {/* TWO-SESSION: subscription upsell (appears after one-time payment) */}
+            {flowMode === "two-session" && subStatus === "upsell" && (
               <div className="bg-white rounded-2xl shadow-sm border-2 border-blue-100 p-6 relative overflow-hidden">
-                {/* Blue accent bar */}
                 <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-purple-500 rounded-t-2xl" />
                 <div className="flex items-start gap-4">
                   <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-2xl shrink-0 mt-0.5">
@@ -176,8 +295,6 @@ export default function Checkout() {
                       <span className="text-[10px] bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full">ADD-ON</span>
                     </div>
                     <p className="text-sm text-gray-500 mb-3">{APPLECAREPLUS.description}</p>
-
-                    {/* Pricing display */}
                     <div className="flex items-baseline gap-2 mb-1">
                       <span className="text-2xl font-bold text-gray-900">Free</span>
                       <span className="text-sm text-gray-400">for 1 month</span>
@@ -185,12 +302,7 @@ export default function Checkout() {
                     <p className="text-xs text-gray-400 mb-4">
                       Then ${APPLECAREPLUS.regularAmount}/{APPLECAREPLUS.interval} · Cancel anytime
                     </p>
-
-                    {/* Recurring Apple Pay button */}
-                    <button
-                      className="apple-pay-button-sim w-full"
-                      onClick={handleSubscribeClick}
-                    >
+                    <button className="apple-pay-button-sim w-full" onClick={handleSubscribeClick}>
                       <svg viewBox="0 0 814 1000" className="w-5 h-5 fill-white" xmlns="http://www.w3.org/2000/svg">
                         <path d="M788.1 340.9c-5.8 4.5-108.2 62.2-108.2 190.5 0 148.4 130.3 200.9 134.2 202.2-.6 3.2-20.7 71.9-68.7 141.9-42.8 61.6-87.5 123.1-155.5 123.1s-85.5-39.5-164-39.5c-76 0-103.7 40.8-165.9 40.8s-105-57.8-155.5-127.4C46 790.7 0 663 0 541.8c0-207.5 135.4-317.3 269-317.3 71 0 130.5 46.4 174.5 46.4 42.7 0 109.2-49 190.5-49 30.7 0 134.4 2.9 210.7 92.3zm-209-181.3c31.3-37.2 53.7-88.1 53.7-139 0-7.1-.6-14.3-1.9-20.1-50.6 1.9-110.8 33.7-147.1 75.8-28.5 32.4-55.1 83.3-55.1 135.5 0 7.8 1.3 15.6 1.9 18.1 3.2.6 8.4 1.3 13.6 1.3 45.4 0 102.5-30.4 134.9-71.6z" />
                       </svg>
@@ -199,7 +311,6 @@ export default function Checkout() {
                     <p className="text-center text-xs text-gray-400 mt-2">
                       Uses a separate <span className="font-mono">recurringPaymentRequest</span> session
                     </p>
-
                     <button
                       onClick={() => { setSubStatus("declined"); setCurrentStep("authorized"); }}
                       className="mt-2 w-full text-xs text-gray-400 hover:text-gray-600 transition-colors py-1"
@@ -211,8 +322,8 @@ export default function Checkout() {
               </div>
             )}
 
-            {/* Subscription success */}
-            {subStatus === "success" && (
+            {/* Subscription success (two-session) */}
+            {flowMode === "two-session" && subStatus === "success" && (
               <div className="bg-white rounded-2xl shadow-sm border-2 border-green-100 p-6">
                 <div className="flex items-center gap-4">
                   <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center shrink-0">
@@ -231,8 +342,8 @@ export default function Checkout() {
               </div>
             )}
 
-            {/* Reset — shown after full flow done */}
-            {paymentStatus === "success" && (subStatus === "success" || subStatus === "declined") && (
+            {/* Reset */}
+            {isSuccess && (flowMode === "one-session" || subStatus === "success" || subStatus === "declined") && (
               <div className="text-center">
                 <button
                   onClick={handleReset}
@@ -244,7 +355,7 @@ export default function Checkout() {
             )}
 
             {/* Divider */}
-            {paymentStatus !== "success" && (
+            {!isSuccess && (
               <div className="flex items-center gap-4">
                 <div className="flex-1 h-px bg-gray-200"></div>
                 <span className="text-xs text-gray-400 font-medium">or continue below</span>
@@ -253,7 +364,7 @@ export default function Checkout() {
             )}
 
             {/* Shipping */}
-            {paymentStatus !== "success" && (
+            {!isSuccess && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">Shipping Information</h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -286,7 +397,7 @@ export default function Checkout() {
             )}
 
             {/* Payment */}
-            {paymentStatus !== "success" && (
+            {!isSuccess && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">Payment Method</h2>
                 <div className="grid grid-cols-2 gap-3">
@@ -312,7 +423,13 @@ export default function Checkout() {
 
           {/* Right: Order Summary + Dev Panel */}
           <div className="space-y-4">
-            <OrderSummary items={CART_ITEMS} subtotal={subtotal} tax={tax} total={total} />
+            <OrderSummary
+              items={CART_ITEMS}
+              subtotal={subtotal}
+              tax={tax}
+              total={total}
+              subscription={flowMode === "one-session" ? APPLECAREPLUS : undefined}
+            />
 
             {/* Dev Panel Toggle */}
             <button
@@ -343,10 +460,10 @@ export default function Checkout() {
       {/* Apple Pay Sheet */}
       {showSheet && (
         <ApplePaySheet
-          items={sheetMode === "onetime" ? CART_ITEMS : []}
-          total={sheetMode === "onetime" ? total : 0}
+          items={CART_ITEMS}
+          total={total}
           mode={sheetMode}
-          recurringDetails={sheetMode === "recurring" ? APPLECAREPLUS : undefined}
+          recurringDetails={APPLECAREPLUS}
           onSuccess={handleSheetSuccess}
           onCancel={handleSheetCancel}
           onStepChange={setCurrentStep}
