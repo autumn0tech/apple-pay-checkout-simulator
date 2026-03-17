@@ -35,6 +35,8 @@ export default function Checkout() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("idle");
   const [subStatus, setSubStatus] = useState<SubStatus>("none");
   const [devPanelOpen, setDevPanelOpen] = useState(true);
+  const [rulesOpen, setRulesOpen] = useState(true);
+  const [docsOpen, setDocsOpen] = useState(true);
   const [currentStep, setCurrentStep] = useState<string>("idle");
   const [sheetMode, setSheetMode] = useState<SheetMode>("onetime");
   const [inStoreProvider, setInStoreProvider] = useState<InStoreProvider>("stripe");
@@ -203,13 +205,16 @@ export default function Checkout() {
 
             {/* Rules reference grid — context-aware */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+              <button
+                onClick={() => setRulesOpen(o => !o)}
+                className="w-full px-5 py-3.5 flex items-center gap-2 text-left hover:bg-gray-50 transition-colors"
+              >
                 <span className="text-sm font-semibold text-gray-900">
                   {flowMode === "in-store" ? "In-Store Terminal Rules" : "Apple Pay Session Rules"}
                 </span>
                 <span className="text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full uppercase tracking-wide">Reference</span>
                 {flowMode === "in-store" && (
-                  <span className={`ml-auto text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
+                  <span className={`text-[9px] font-semibold px-2 py-0.5 rounded-full border ${
                     inStoreProvider === "stripe"
                       ? "bg-violet-50 text-violet-600 border-violet-200"
                       : "bg-sky-50 text-sky-600 border-sky-200"
@@ -217,8 +222,14 @@ export default function Checkout() {
                     {inStoreProvider === "stripe" ? "Stripe Terminal" : "Braintree / PayPal"}
                   </span>
                 )}
-              </div>
-              <div className="divide-y divide-gray-50">
+                <svg
+                  viewBox="0 0 24 24"
+                  className={`w-4 h-4 fill-none stroke-gray-400 stroke-2 ml-auto shrink-0 transition-transform duration-200 ${rulesOpen ? "rotate-180" : ""}`}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {rulesOpen && <div className="divide-y divide-gray-50 border-t border-gray-100">
                 {(flowMode === "in-store" ? (inStoreProvider === "stripe" ? [
                   {
                     scenario: "setup_future_usage: 'off_session' on PaymentIntent",
@@ -332,7 +343,7 @@ export default function Checkout() {
                     </span>
                   </div>
                 ))}
-              </div>
+              </div>}
             </div>
 
             {/* In-Store P400 simulator */}
@@ -661,12 +672,21 @@ export default function Checkout() {
 
             {/* Developer References */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2">
+              <button
+                onClick={() => setDocsOpen(o => !o)}
+                className="w-full px-5 py-3.5 flex items-center gap-2 text-left hover:bg-gray-50 transition-colors"
+              >
                 <span className="text-sm font-semibold text-gray-900">Developer References</span>
                 <span className="text-[10px] font-semibold bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full uppercase tracking-wide">Docs</span>
-              </div>
+                <svg
+                  viewBox="0 0 24 24"
+                  className={`w-4 h-4 fill-none stroke-gray-400 stroke-2 ml-auto shrink-0 transition-transform duration-200 ${docsOpen ? "rotate-180" : ""}`}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
 
-              {/* Apple */}
+              {docsOpen && <>{/* Apple */}
               <div className="px-5 pt-4 pb-2">
                 <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest mb-2">Apple Developer</p>
                 <div className="space-y-1">
@@ -804,6 +824,7 @@ export default function Checkout() {
                   ))}
                 </div>
               </div>
+            </>}
             </div>
           </div>
 
