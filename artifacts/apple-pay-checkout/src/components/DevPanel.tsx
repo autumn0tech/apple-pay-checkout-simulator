@@ -881,7 +881,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
           <div className="space-y-1">
             <div className="flex items-center gap-2 mb-3 px-1">
               <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium">
-                {devMode === "combined" ? "One-session flow" : devMode === "recurring" ? "Recurring flow" : "One-time flow"} — interact to see live updates
+                {devMode === "combined" ? "Online: One-session flow" : devMode === "recurring" ? "Recurring flow" : "One-time flow"} — interact to see live updates
               </p>
               {devMode === "combined" && (
                 <span className="text-[9px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded-full font-semibold border border-indigo-500/30">COMBINED</span>
@@ -976,7 +976,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
         {/* TWO-SESSION: ONE-TIME TAB */}
         {tab === "events" && (
           <div className="space-y-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">Two-session flow · Step 1 — one-time payment</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">Online: Two-session flow · Step 1 — one-time payment</p>
             <CodeBlock code={EVENTS_CODE} title="apple-pay-session.js · Step 1" />
             <Collapsible title="Required Entitlements">
               <div className="space-y-1">
@@ -999,7 +999,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
         {/* TWO-SESSION: RECURRING TAB */}
         {tab === "recurring" && (
           <div className="space-y-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">Two-session flow · Step 2 — recurring session</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">Online: Two-session flow · Step 2 — recurring session</p>
             <Collapsible title="Key API fields — ApplePaySession v14+">
               <div className="space-y-1">
                 {[
@@ -1107,7 +1107,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
         {/* ONE-SESSION: COMBINED TAB */}
         {tab === "combined" && (
           <div className="space-y-2">
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">One-session flow · subscription as a checkout SKU</p>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">Online: One-session flow · subscription as a checkout SKU</p>
             <Collapsible title="How it differs from the two-session flow">
               <div className="space-y-1.5">
                 {[
