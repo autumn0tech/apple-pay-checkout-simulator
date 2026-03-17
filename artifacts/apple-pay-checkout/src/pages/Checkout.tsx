@@ -185,8 +185,8 @@ export default function Checkout() {
             {/* Flow mode switcher */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-1.5 flex gap-1">
               {([
-                { mode: "one-session", label: "One-Session Flow",  sublabel: "Subscription as SKU at checkout",   activeClass: "bg-indigo-600 text-white shadow-sm" },
-                { mode: "two-session", label: "Two-Session Flow",  sublabel: "Purchase → post-purchase upsell",   activeClass: "bg-blue-600 text-white shadow-sm" },
+                { mode: "one-session", label: "Online: One-Session Flow",  sublabel: "Subscription as SKU at checkout",   activeClass: "bg-indigo-600 text-white shadow-sm" },
+                { mode: "two-session", label: "Online: Two-Session Flow",  sublabel: "Purchase → post-purchase upsell",   activeClass: "bg-blue-600 text-white shadow-sm" },
                 { mode: "in-store",    label: "In-Store / P400",   sublabel: "NFC tap on Ingenico terminal",      activeClass: "bg-orange-600 text-white shadow-sm" },
               ] as { mode: FlowMode; label: string; sublabel: string; activeClass: string }[]).map(({ mode, label, sublabel, activeClass }) => {
                 const active = flowMode === mode;
