@@ -705,30 +705,75 @@ const { chargePaymentMethod: { transaction: sub } } = await gql(\`
 });
 showConfirmation({ payment: true, subscription: true });`;
 
-function CodeBlock({ code }: { code: string }) {
+function Collapsible({ title, badge, defaultOpen = true, children }: {
+  title: string;
+  badge?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl overflow-hidden border border-gray-800">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-gray-900/70 hover:bg-gray-800/60 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {badge}
+          <span className="text-[10px] font-semibold text-gray-400 truncate">{title}</span>
+        </div>
+        <svg viewBox="0 0 24 24" className={`w-3 h-3 fill-none stroke-gray-600 stroke-2 shrink-0 ml-2 transition-transform ${open ? "rotate-180" : ""}`}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && <div className="p-3">{children}</div>}
+    </div>
+  );
+}
+
+function CodeBlock({ code, title, defaultOpen = true }: { code: string; title?: string; defaultOpen?: boolean }) {
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="relative bg-[#0d1117] rounded-xl overflow-hidden border border-white/10">
       <div className="flex items-center justify-between px-3 py-2 bg-[#161b22] border-b border-white/10">
-        <div className="flex gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></div>
-          <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></div>
-          <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]"></div>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="flex gap-1.5 shrink-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></div>
+            <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]"></div>
+          </div>
+          {title && <span className="text-[10px] text-gray-600 font-mono truncate">{title}</span>}
         </div>
-        <button
-          onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-          className="text-gray-500 hover:text-gray-300 text-[10px] font-medium transition-colors flex items-center gap-1"
-        >
-          {copied ? (
-            <><svg viewBox="0 0 24 24" className="w-3 h-3 fill-none stroke-green-400 stroke-2" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Copied!</span></>
-          ) : (
-            <><svg viewBox="0 0 24 24" className="w-3 h-3 fill-none stroke-current stroke-2" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>Copy</>
+        <div className="flex items-center gap-3 shrink-0">
+          {open && (
+            <button
+              onClick={() => { navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+              className="text-gray-500 hover:text-gray-300 text-[10px] font-medium transition-colors flex items-center gap-1"
+            >
+              {copied ? (
+                <><svg viewBox="0 0 24 24" className="w-3 h-3 fill-none stroke-green-400 stroke-2"><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg><span className="text-green-400">Copied!</span></>
+              ) : (
+                <><svg viewBox="0 0 24 24" className="w-3 h-3 fill-none stroke-current stroke-2"><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>Copy</>
+              )}
+            </button>
           )}
-        </button>
+          <button
+            onClick={() => setOpen(o => !o)}
+            className="text-gray-600 hover:text-gray-400 transition-colors"
+            title={open ? "Collapse" : "Expand"}
+          >
+            <svg viewBox="0 0 24 24" className={`w-3 h-3 fill-none stroke-current stroke-2 transition-transform ${open ? "rotate-180" : ""}`}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        </div>
       </div>
-      <pre className="code-block text-[11px] text-gray-300 overflow-x-auto p-3 max-h-80 overflow-y-auto leading-relaxed whitespace-pre">
-        {code}
-      </pre>
+      {open && (
+        <pre className="code-block text-[11px] text-gray-300 overflow-x-auto p-3 max-h-80 overflow-y-auto leading-relaxed whitespace-pre">
+          {code}
+        </pre>
+      )}
     </div>
   );
 }
@@ -916,16 +961,15 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
         {tab === "setup" && (
           <div className="space-y-2">
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">HTML — button setup for both flows</p>
-            <CodeBlock code={SETUP_CODE} />
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
-              <p className="text-[10px] text-yellow-300/80 font-medium mb-1">Button type matters</p>
+            <CodeBlock code={SETUP_CODE} title="apple-pay-button.html" />
+            <Collapsible title="Button type matters">
               <ul className="text-[10px] text-yellow-200/60 space-y-0.5 list-disc list-inside">
                 <li>Use <span className="font-mono">type="buy"</span> for one-time purchases and combined flows</li>
                 <li>Use <span className="font-mono">type="subscribe"</span> for standalone subscription sessions</li>
                 <li>Apple may reject apps using the wrong button type</li>
                 <li>Domain must pass Apple Pay domain verification</li>
               </ul>
-            </div>
+            </Collapsible>
           </div>
         )}
 
@@ -933,9 +977,8 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
         {tab === "events" && (
           <div className="space-y-2">
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-3 px-1">Two-session flow · Step 1 — one-time payment</p>
-            <CodeBlock code={EVENTS_CODE} />
-            <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-              <p className="text-[10px] text-blue-300/80 font-medium mb-2">Required Entitlements</p>
+            <CodeBlock code={EVENTS_CODE} title="apple-pay-session.js · Step 1" />
+            <Collapsible title="Required Entitlements">
               <div className="space-y-1">
                 {[
                   ["Merchant ID", "merchant.com.yourdomain.store"],
@@ -949,7 +992,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
                   </div>
                 ))}
               </div>
-            </div>
+            </Collapsible>
           </div>
         )}
 
@@ -957,9 +1000,8 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
         {tab === "recurring" && (
           <div className="space-y-2">
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">Two-session flow · Step 2 — recurring session</p>
-            <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-xl mb-2">
-              <p className="text-[10px] text-purple-300 font-semibold mb-1">Key API fields (ApplePaySession v14+)</p>
-              <div className="space-y-1 mt-1">
+            <Collapsible title="Key API fields — ApplePaySession v14+">
+              <div className="space-y-1">
                 {[
                   ["trialBilling", "Optional · shown as free/discounted first period"],
                   ["regularBilling", "Required · the amount charged every interval"],
@@ -973,22 +1015,21 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
                   </div>
                 ))}
               </div>
-            </div>
-            <CodeBlock code={RECURRING_CODE} />
-            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
-              <p className="text-[10px] text-green-300/80 font-semibold mb-1">Token lifecycle</p>
+            </Collapsible>
+            <CodeBlock code={RECURRING_CODE} title="recurring-session.js · Step 2" />
+            <Collapsible title="Token lifecycle">
               <ul className="text-[10px] text-green-200/60 space-y-1 list-disc list-inside leading-relaxed">
                 <li>The recurring token is <span className="text-white">not</span> the same as a one-time token — store it separately</li>
                 <li>Apple calls <span className="font-mono">tokenNotificationURL</span> when the user's card is updated so you can silently update without re-auth</li>
                 <li>Never charge the token before <span className="font-mono">recurringPaymentStartDate</span></li>
               </ul>
-            </div>
+            </Collapsible>
           </div>
         )}
 
         {/* IN-STORE TAB */}
         {tab === "instore" && (
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex items-center justify-between mb-2 px-1">
               <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium">
                 In-store · Ingenico P400
@@ -1002,10 +1043,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
               </span>
             </div>
 
-            <div className={`p-3 rounded-xl border ${inStoreProvider === "stripe" ? "bg-orange-500/10 border-orange-500/20" : "bg-sky-500/10 border-sky-500/20"}`}>
-              <p className={`text-[10px] font-semibold mb-1.5 ${inStoreProvider === "stripe" ? "text-orange-300" : "text-sky-300"}`}>
-                How in-store Apple Pay differs from online
-              </p>
+            <Collapsible title="How in-store Apple Pay differs from online">
               <div className="space-y-1">
                 {(inStoreProvider === "stripe" ? [
                   ["NFC layer",    "Stripe Terminal SDK — not the browser ApplePaySession"],
@@ -1028,32 +1066,20 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
                   </div>
                 ))}
               </div>
-            </div>
+            </Collapsible>
 
-            <div className="flex gap-1.5 mb-1">
-              <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${inStoreProvider === "stripe" ? "text-orange-300 bg-orange-500/10 border-orange-500/20" : "text-sky-300 bg-sky-500/10 border-sky-500/20"}`}>
-                Two-Session
-              </span>
-              <span className="text-[10px] text-gray-500 self-center">
-                {inStoreProvider === "stripe" ? "— NFC purchase then browser subscription" : "— NFC charge + vault, then off-session subscription"}
-              </span>
-            </div>
-            <CodeBlock code={inStoreProvider === "stripe" ? INSTORE_TWO_SESSION_CODE : BRAINTREE_TWO_SESSION_CODE} />
+            <CodeBlock
+              code={inStoreProvider === "stripe" ? INSTORE_TWO_SESSION_CODE : BRAINTREE_TWO_SESSION_CODE}
+              title={inStoreProvider === "stripe" ? "terminal-two-session.js" : "braintree-two-session.js"}
+            />
 
-            <div className="flex gap-1.5 mt-2 mb-1">
-              <span className={`text-[10px] font-semibold px-2 py-1 rounded-full border ${inStoreProvider === "stripe" ? "text-orange-300 bg-orange-500/10 border-orange-500/20" : "text-sky-300 bg-sky-500/10 border-sky-500/20"}`}>
-                One-Session
-              </span>
-              <span className="text-[10px] text-gray-500 self-center">
-                {inStoreProvider === "stripe" ? "— single tap, saves card for subscription" : "— single tap charges + immediately activates subscription"}
-              </span>
-            </div>
-            <CodeBlock code={inStoreProvider === "stripe" ? INSTORE_ONE_SESSION_CODE : BRAINTREE_ONE_SESSION_CODE} />
+            <CodeBlock
+              code={inStoreProvider === "stripe" ? INSTORE_ONE_SESSION_CODE : BRAINTREE_ONE_SESSION_CODE}
+              title={inStoreProvider === "stripe" ? "terminal-one-session.js" : "braintree-one-session.js"}
+              defaultOpen={false}
+            />
 
-            <div className="p-3 bg-gray-800 border border-gray-700 rounded-xl">
-              <p className="text-[10px] text-gray-400 font-semibold mb-1.5">
-                {inStoreProvider === "stripe" ? "Required Stripe Terminal setup" : "Required Braintree setup"}
-              </p>
+            <Collapsible title={inStoreProvider === "stripe" ? "Required Stripe Terminal setup" : "Required Braintree setup"} defaultOpen={false}>
               <div className="space-y-1">
                 {(inStoreProvider === "stripe" ? [
                   ["SDK",        "npm install @stripe/terminal-js"],
@@ -1074,7 +1100,7 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
                   </div>
                 ))}
               </div>
-            </div>
+            </Collapsible>
           </div>
         )}
 
@@ -1082,9 +1108,8 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
         {tab === "combined" && (
           <div className="space-y-2">
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-medium mb-2 px-1">One-session flow · subscription as a checkout SKU</p>
-            <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl mb-2">
-              <p className="text-[10px] text-indigo-300 font-semibold mb-1">How it differs from the two-session flow</p>
-              <div className="space-y-1.5 mt-1">
+            <Collapsible title="How it differs from the two-session flow">
+              <div className="space-y-1.5">
                 {[
                   ["Sessions", "1 — both payment + subscription in one ApplePaySession"],
                   ["SKU placement", "Subscription appears as a line item at checkout"],
@@ -1099,17 +1124,16 @@ export default function DevPanel({ currentStep, total, devMode = "onetime", inSt
                   </div>
                 ))}
               </div>
-            </div>
-            <CodeBlock code={COMBINED_CODE} />
-            <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-              <p className="text-[10px] text-amber-300/80 font-semibold mb-1">Tradeoffs to consider</p>
+            </Collapsible>
+            <CodeBlock code={COMBINED_CODE} title="combined-session.js" />
+            <Collapsible title="Tradeoffs to consider" defaultOpen={false}>
               <ul className="text-[10px] text-amber-200/60 space-y-1 list-disc list-inside leading-relaxed">
                 <li>Subscription conversion may be lower when shown upfront vs. post-purchase</li>
                 <li>Simpler backend — one endpoint handles both charges</li>
                 <li>Users see full recurring terms before authorizing — better transparency</li>
                 <li>No risk of user completing purchase then declining the upsell</li>
               </ul>
-            </div>
+            </Collapsible>
           </div>
         )}
       </div>
