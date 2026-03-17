@@ -193,7 +193,7 @@ export default function SimulationGuide({ flowMode = "two-session" }: Simulation
   const steps = isOneSession ? ONE_SESSION_STEPS : TWO_SESSION_STEPS;
   const callouts = isOneSession ? ONE_SESSION_CALLOUTS : TWO_SESSION_CALLOUTS;
 
-  const badge = isOneSession ? "One-session flow" : "Two-session flow";
+  const badge = isOneSession ? "Online: One-session flow" : "Online: Two-session flow";
   const badgeClass = isOneSession
     ? "bg-indigo-100 text-indigo-700 border-indigo-200/80"
     : "bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 border-blue-200/80";
