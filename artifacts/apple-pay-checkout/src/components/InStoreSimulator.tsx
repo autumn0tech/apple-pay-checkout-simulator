@@ -310,8 +310,10 @@ function PhoneMockup({ visible, isSubscription, step }: {
   isSubscription: boolean;
   step: TerminalStep;
 }) {
-  const isAuthorizing = step === "authorizing" || step === "sub_authorizing";
-  const isApproved    = step === "purchase_approved" || step === "vaulting" || step === "complete";
+  const isAuthorizing  = step === "authorizing" || step === "sub_authorizing";
+  const isSubAuth      = step === "sub_authorizing";
+  const isApproved     = step === "purchase_approved" || step === "vaulting" || step === "complete";
+  const isSubApproved  = step === "sub_activating";
 
   return (
     <div className={`transition-all duration-500 ${visible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-6 pointer-events-none"}`}>
@@ -380,8 +382,8 @@ function PhoneMockup({ visible, isSubscription, step }: {
           </div>
         )}
 
-        {/* ── APPROVED STATE ── */}
-        {isApproved && (
+        {/* ── APPROVED STATE (purchase or subscription) ── */}
+        {(isApproved || isSubApproved) && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5" style={{ paddingBottom: 100 }}>
             <div style={{
               width: 36, height: 36, borderRadius: "50%",
@@ -395,7 +397,9 @@ function PhoneMockup({ visible, isSubscription, step }: {
               </svg>
             </div>
             <p style={{ color: "#34c759", fontSize: 9, fontWeight: 700, letterSpacing: "0.08em" }}>APPROVED</p>
-            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 8 }}>$313.20</p>
+            <p style={{ color: "rgba(255,255,255,0.35)", fontSize: 8 }}>
+              {isSubApproved ? "Subscription authorized" : TOTAL}
+            </p>
           </div>
         )}
 
@@ -403,8 +407,8 @@ function PhoneMockup({ visible, isSubscription, step }: {
         <div
           className="absolute bottom-0 left-0 right-0 rounded-t-[18px] overflow-hidden"
           style={{
-            height: isApproved ? 96 : 118,
-            background: isApproved ? "#f2f2f7" : "#f2f2f7",
+            height: (isApproved || isSubApproved) ? 96 : 118,
+            background: "#f2f2f7",
             transition: "height 0.4s ease",
           }}
         >
@@ -417,7 +421,8 @@ function PhoneMockup({ visible, isSubscription, step }: {
             <p className="text-[8px] text-gray-500">AudioHound Store</p>
           </div>
 
-          {!isApproved && (
+          {/* Basket items — first NFC tap only */}
+          {!isApproved && !isSubApproved && !isSubAuth && (
             <div className="px-3 py-1.5 space-y-0.5">
               <div className="flex justify-between text-[7.5px]">
                 <span className="text-gray-500">AirPods Pro</span>
@@ -435,24 +440,42 @@ function PhoneMockup({ visible, isSubscription, step }: {
               )}
               <div className="flex justify-between text-[7.5px] pt-0.5 border-t border-gray-200">
                 <span className="text-gray-800 font-semibold">Total</span>
-                <span className="text-gray-800 font-bold">$313.20</span>
+                <span className="text-gray-800 font-bold">{TOTAL}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Subscription-only items — second NFC tap */}
+          {isSubAuth && (
+            <div className="px-3 py-1.5 space-y-0.5">
+              <div className="flex justify-between text-[7.5px]">
+                <span className="text-indigo-600">🎵 AudioHound Pro</span>
+                <span className="text-indigo-600 font-medium">Free trial</span>
+              </div>
+              <div className="flex justify-between text-[7.5px] pt-0.5 border-t border-gray-200">
+                <span className="text-gray-800 font-semibold">Today</span>
+                <span className="text-gray-800 font-bold">$0.00</span>
+              </div>
+              <div className="flex justify-between text-[6.5px]">
+                <span className="text-gray-400">Then</span>
+                <span className="text-gray-400">{SUB_PRICE}</span>
               </div>
             </div>
           )}
 
           {/* Button */}
           <div className={`mx-3 mt-1 rounded-lg py-1.5 flex items-center justify-center gap-1 transition-colors ${
-            isApproved ? "bg-green-500" : isAuthorizing ? "bg-gray-300" : "bg-black"
+            (isApproved || isSubApproved) ? "bg-green-500" : isAuthorizing ? "bg-gray-300" : "bg-black"
           }`}>
-            {isApproved ? (
+            {(isApproved || isSubApproved) ? (
               <svg viewBox="0 0 24 24" style={{ width: 10, height: 10, fill: "none", stroke: "white", strokeWidth: 2.5 }}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             ) : (
               <svg viewBox="0 0 814 1000" className={`w-2 h-2 ${isAuthorizing ? "fill-gray-400" : "fill-white"}`}><path d={APPLE_LOGO_PATH} /></svg>
             )}
-            <span className={`text-[8px] font-semibold ${isApproved ? "text-white" : isAuthorizing ? "text-gray-400" : "text-white"}`}>
-              {isApproved ? "Done" : isAuthorizing ? "Authorizing…" : "Pay"}
+            <span className={`text-[8px] font-semibold ${(isApproved || isSubApproved) ? "text-white" : isAuthorizing ? "text-gray-400" : "text-white"}`}>
+              {(isApproved || isSubApproved) ? "Done" : isAuthorizing ? "Authorizing…" : "Pay"}
             </span>
           </div>
         </div>
