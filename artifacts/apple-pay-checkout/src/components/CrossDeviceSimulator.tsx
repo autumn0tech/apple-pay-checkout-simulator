@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 type CrossDeviceStep =
   | "idle"
   | "qr_shown"
+  | "handoff"
   | "notified"
   | "sheet_open"
   | "face_id"
@@ -41,26 +42,81 @@ function QRCode() {
     <svg viewBox="0 0 95 95" className="w-full h-full" style={{ imageRendering: "pixelated" }}>
       {QR_PATTERN.map((row, r) =>
         row.map((cell, c) =>
-          cell ? (
-            <rect key={`${r}-${c}`} x={c * 5} y={r * 5} width={5} height={5} fill="black" />
-          ) : null
+          cell ? <rect key={`${r}-${c}`} x={c * 5} y={r * 5} width={5} height={5} fill="black" /> : null
         )
       )}
     </svg>
   );
 }
 
+function HandoffCircle({ size = 40 }: { size?: number }) {
+  return (
+    <>
+      <style>{`
+        @keyframes handoff-ring {
+          0%   { transform: scale(1);   opacity: 0.65; }
+          100% { transform: scale(2.9); opacity: 0;    }
+        }
+        @keyframes handoff-ring-inner {
+          0%   { transform: scale(1);   opacity: 0.55; }
+          100% { transform: scale(2.2); opacity: 0;    }
+        }
+      `}</style>
+      <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+        {[
+          { delay: 0,    dur: "1.9s", opacity: 0.5,  keyframe: "handoff-ring" },
+          { delay: 0.55, dur: "1.9s", opacity: 0.35, keyframe: "handoff-ring" },
+          { delay: 1.1,  dur: "1.9s", opacity: 0.2,  keyframe: "handoff-ring" },
+        ].map(({ delay, dur, opacity, keyframe }, i) => (
+          <div
+            key={i}
+            className="absolute rounded-full"
+            style={{
+              width: size,
+              height: size,
+              border: `${Math.max(0.8, 1.5 - i * 0.3)}px solid rgba(255,255,255,${opacity})`,
+              animation: `${keyframe} ${dur} cubic-bezier(0.25,0.46,0.45,0.94) ${delay}s infinite`,
+              transformOrigin: "center",
+            }}
+          />
+        ))}
+        <div
+          className="relative z-10 rounded-full flex items-center justify-center"
+          style={{
+            width: size,
+            height: size,
+            background: "rgba(28,28,32,0.75)",
+            border: "1.5px solid rgba(255,255,255,0.28)",
+            backdropFilter: "blur(8px)",
+            boxShadow: "0 0 12px rgba(255,255,255,0.08)",
+          }}
+        >
+          <svg viewBox="0 0 814 1000" style={{ width: size * 0.38, height: size * 0.38, fill: "white" }}>
+            <path d={APPLE_LOGO_PATH} />
+          </svg>
+        </div>
+      </div>
+    </>
+  );
+}
+
 const STEPS: { id: CrossDeviceStep; label: string }[] = [
-  { id: "qr_shown", label: "Handoff" },
-  { id: "notified", label: "Notified" },
+  { id: "qr_shown",   label: "Scanning" },
+  { id: "handoff",    label: "Handoff" },
+  { id: "notified",   label: "Alert" },
   { id: "sheet_open", label: "Sheet" },
-  { id: "face_id", label: "Face ID" },
-  { id: "approved", label: "Approved" },
+  { id: "face_id",    label: "Face ID" },
+  { id: "approved",   label: "Approved" },
+];
+
+const STEP_ORDER: CrossDeviceStep[] = [
+  "qr_shown","handoff","notified","sheet_open","face_id","approved","complete",
 ];
 
 const AUTO_ADVANCE: Partial<Record<CrossDeviceStep, { next: CrossDeviceStep; delay: number }>> = {
-  qr_shown:   { next: "notified",   delay: 2600 },
-  notified:   { next: "sheet_open", delay: 2000 },
+  qr_shown:   { next: "handoff",    delay: 2400 },
+  handoff:    { next: "notified",   delay: 2200 },
+  notified:   { next: "sheet_open", delay: 1800 },
   sheet_open: { next: "face_id",    delay: 1800 },
   face_id:    { next: "approved",   delay: 2200 },
   approved:   { next: "complete",   delay: 1600 },
@@ -72,12 +128,10 @@ function LaptopScreen({ step }: { step: CrossDeviceStep }) {
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#f0f0f5" }}>
-      {/* Dimmed page background */}
       <div
         className="absolute inset-0 transition-all duration-700"
-        style={{ filter: showModal ? "brightness(0.45) blur(1px)" : "none" }}
+        style={{ filter: showModal ? "brightness(0.4) blur(1px)" : "none" }}
       >
-        {/* Browser chrome */}
         <div className="h-5 bg-[#e8e8ea] flex items-center px-2 gap-1.5 border-b border-gray-300/60">
           <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
           <div className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
@@ -86,7 +140,6 @@ function LaptopScreen({ step }: { step: CrossDeviceStep }) {
             <span style={{ fontSize: 5, color: "#888" }}>audiohound.com/checkout</span>
           </div>
         </div>
-        {/* Page */}
         <div className="px-3 py-2 space-y-1.5">
           <div className="flex items-center gap-1 mb-2">
             <span style={{ fontSize: 7 }}>🎵</span>
@@ -100,7 +153,8 @@ function LaptopScreen({ step }: { step: CrossDeviceStep }) {
               <span className="text-gray-600">MagSafe</span><span className="font-semibold text-gray-800">$39</span>
             </div>
             <div className="flex justify-between border-t border-gray-100 pt-0.5" style={{ fontSize: 5.5 }}>
-              <span className="text-gray-800 font-bold">Total</span><span className="text-gray-800 font-bold">$313.20</span>
+              <span className="text-gray-800 font-bold">Total</span>
+              <span className="text-gray-800 font-bold">$313.20</span>
             </div>
           </div>
           <div className="bg-black rounded flex items-center justify-center gap-1 py-1.5">
@@ -110,13 +164,11 @@ function LaptopScreen({ step }: { step: CrossDeviceStep }) {
         </div>
       </div>
 
-      {/* Handoff Modal */}
       {showModal && !isApproved && (
         <div
           className="absolute inset-x-3 rounded-lg overflow-hidden shadow-2xl"
           style={{
-            top: "50%",
-            transform: "translateY(-50%)",
+            top: "50%", transform: "translateY(-50%)",
             background: "rgba(245,245,250,0.96)",
             backdropFilter: "blur(12px)",
             border: "1px solid rgba(0,0,0,0.12)",
@@ -128,26 +180,34 @@ function LaptopScreen({ step }: { step: CrossDeviceStep }) {
               <span style={{ fontSize: 8, fontWeight: 700, color: "#1a1a1a" }}>Pay</span>
             </div>
             <p style={{ fontSize: 6, color: "#444", marginBottom: 6 }}>Complete with iPhone</p>
-            {/* QR */}
             <div className="mx-auto p-1 bg-white rounded" style={{ width: 56, height: 56 }}>
               <QRCode />
             </div>
-            <p style={{ fontSize: 5, color: "#888", marginTop: 5 }}>Or bring iPhone near this Mac</p>
+            <p style={{ fontSize: 5, color: "#888", marginTop: 5 }}>
+              {step === "qr_shown" ? "Or bring iPhone near this Mac" :
+               step === "handoff" ? "iPhone detected via Bluetooth" :
+               "iPhone connected — awaiting authentication"}
+            </p>
             <div className="flex items-center justify-center gap-0.5 mt-1.5">
-              <div className={`w-1 h-1 rounded-full bg-blue-500 ${step === "qr_shown" ? "animate-bounce" : ""}`} style={{ animationDelay: "0ms" }} />
-              <div className={`w-1 h-1 rounded-full bg-blue-500 ${step === "qr_shown" ? "animate-bounce" : ""}`} style={{ animationDelay: "150ms" }} />
-              <div className={`w-1 h-1 rounded-full bg-blue-500 ${step === "qr_shown" ? "animate-bounce" : ""}`} style={{ animationDelay: "300ms" }} />
+              {(step === "qr_shown") ? (
+                <>
+                  <div className="w-1 h-1 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "0ms" }} />
+                  <div className="w-1 h-1 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "150ms" }} />
+                  <div className="w-1 h-1 rounded-full bg-blue-500 animate-bounce" style={{ animationDelay: "300ms" }} />
+                </>
+              ) : (
+                <p style={{ fontSize: 5.5, color: "#007aff" }}>
+                  {step === "handoff" ? "Continuity active…" :
+                   step === "notified" ? "Notification sent…" :
+                   step === "sheet_open" ? "Waiting for Face ID…" :
+                   step === "face_id" ? "Authenticating…" : ""}
+                </p>
+              )}
             </div>
-            {step !== "qr_shown" && (
-              <p style={{ fontSize: 5.5, color: "#007aff", marginTop: 4 }}>
-                {step === "notified" ? "iPhone detected…" : step === "sheet_open" ? "Waiting for Face ID…" : step === "face_id" ? "Authenticating…" : ""}
-              </p>
-            )}
           </div>
         </div>
       )}
 
-      {/* Approved overlay */}
       {isApproved && (
         <div
           className="absolute inset-0 flex flex-col items-center justify-center"
@@ -172,21 +232,24 @@ function LaptopScreen({ step }: { step: CrossDeviceStep }) {
 function ConnectionBeam({ step }: { step: CrossDeviceStep }) {
   const active = step !== "idle" && step !== "complete";
   const returning = step === "approved" || step === "complete";
+  const isHandoff = step === "handoff";
 
   return (
     <div className="flex flex-col items-center justify-center gap-2" style={{ width: 64 }}>
-      {/* BT icon */}
-      <div className={`transition-all duration-500 ${active ? "text-blue-500" : "text-gray-300"}`}>
-        <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current stroke-2">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M12 2l4 4-4 4V2zM12 22l4-4-4-4v8zM12 6l-4 4 4 4" />
-        </svg>
-      </div>
-      {/* Animated dashes */}
+      {isHandoff ? (
+        <HandoffCircle size={32} />
+      ) : (
+        <div className={`transition-all duration-500 ${active ? "text-blue-500" : "text-gray-300"}`}>
+          <svg viewBox="0 0 24 24" className="w-5 h-5 fill-none stroke-current stroke-2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 2l4 4-4 4V2zM12 22l4-4-4-4v8zM12 6l-4 4 4 4" />
+          </svg>
+        </div>
+      )}
       <div className="flex flex-col items-center gap-1">
         {[0, 1, 2, 3, 4].map((i) => (
           <div
             key={i}
-            className={`w-0.5 rounded-full transition-all duration-300 ${active ? (returning ? "bg-green-400" : "bg-blue-400") : "bg-gray-200"}`}
+            className={`w-0.5 rounded-full transition-all duration-300 ${active ? (returning ? "bg-green-400" : isHandoff ? "bg-white/60" : "bg-blue-400") : "bg-gray-200"}`}
             style={{
               height: 6,
               opacity: active ? 1 : 0.4,
@@ -196,10 +259,13 @@ function ConnectionBeam({ step }: { step: CrossDeviceStep }) {
         ))}
       </div>
       <span
-        className={`text-center transition-colors duration-300 ${active ? (returning ? "text-green-600" : "text-blue-500") : "text-gray-300"}`}
-        style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.05em", lineHeight: 1.4 }}
+        className={`text-center transition-colors duration-300 ${active ? (returning ? "text-green-600" : isHandoff ? "text-blue-600" : "text-blue-500") : "text-gray-300"}`}
+        style={{ fontSize: 8, fontWeight: 600, letterSpacing: "0.05em", lineHeight: 1.4, whiteSpace: "pre-line" }}
       >
-        {step === "idle" ? "CONTINUITY" : returning ? "AUTH\nCONFIRMED" : "HAND\nOFF"}
+        {step === "idle" ? "CONTINUITY" :
+         isHandoff ? "HAND\nOFF" :
+         returning ? "AUTH\nCONFIRMED" :
+         "HAND\nOFF"}
       </span>
     </div>
   );
@@ -207,6 +273,7 @@ function ConnectionBeam({ step }: { step: CrossDeviceStep }) {
 
 function PhoneScreen({ step }: { step: CrossDeviceStep }) {
   const isSleeping = step === "idle" || step === "qr_shown";
+  const isHandoff = step === "handoff";
   const isLock = step === "notified";
   const isSheet = step === "sheet_open" || step === "face_id";
   const isApproved = step === "approved" || step === "complete";
@@ -216,6 +283,27 @@ function PhoneScreen({ step }: { step: CrossDeviceStep }) {
     return (
       <div className="w-full h-full bg-black rounded-[10px] flex items-end justify-center pb-3">
         <div className="w-8 h-0.5 bg-gray-700 rounded-full" />
+      </div>
+    );
+  }
+
+  if (isHandoff) {
+    return (
+      <div
+        className="w-full h-full rounded-[10px] relative overflow-hidden flex flex-col items-center"
+        style={{ background: "linear-gradient(160deg, #0d0d14 0%, #111120 60%, #0a0a18 100%)" }}
+      >
+        <div className="text-white mt-3 text-center">
+          <p style={{ fontSize: 18, fontWeight: 300, letterSpacing: -1, lineHeight: 1 }}>12:41</p>
+          <p style={{ fontSize: 6.5, color: "rgba(255,255,255,0.5)" }}>Friday, April 25</p>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 flex flex-col items-center" style={{ paddingBottom: 8 }}>
+          <p style={{ fontSize: 5.5, color: "rgba(255,255,255,0.45)", marginBottom: 6, letterSpacing: "0.06em" }}>
+            SWIPE UP TO PAY
+          </p>
+          <HandoffCircle size={36} />
+        </div>
+        <div className="absolute bottom-1.5 w-8 h-0.5 bg-white/20 rounded-full" />
       </div>
     );
   }
@@ -230,13 +318,10 @@ function PhoneScreen({ step }: { step: CrossDeviceStep }) {
           <p style={{ fontSize: 18, fontWeight: 300, letterSpacing: -1, lineHeight: 1 }}>12:41</p>
           <p style={{ fontSize: 6.5, color: "rgba(255,255,255,0.6)" }}>Friday, April 25</p>
         </div>
-        {/* Notification banner */}
         <div
           className="absolute mx-1.5 rounded-xl overflow-hidden"
           style={{
-            top: 42,
-            left: 6,
-            right: 6,
+            top: 42, left: 6, right: 6,
             background: "rgba(255,255,255,0.18)",
             backdropFilter: "blur(10px)",
             border: "1px solid rgba(255,255,255,0.15)",
@@ -254,7 +339,6 @@ function PhoneScreen({ step }: { step: CrossDeviceStep }) {
             </div>
           </div>
         </div>
-        {/* Home indicator */}
         <div className="absolute bottom-1.5 w-8 h-0.5 bg-white/30 rounded-full" />
       </div>
     );
@@ -263,15 +347,20 @@ function PhoneScreen({ step }: { step: CrossDeviceStep }) {
   if (isSheet || isApproved) {
     return (
       <div className="w-full h-full rounded-[10px] relative overflow-hidden" style={{ background: "#f2f2f7" }}>
-        {/* Status bar */}
         <div className="flex items-center justify-between px-2 pt-1" style={{ height: 14 }}>
           <span style={{ fontSize: 5.5, fontWeight: 700, color: "#1a1a1a" }}>12:41</span>
           <div className="flex items-center gap-0.5">
-            <svg viewBox="0 0 24 24" style={{ width: 7, height: 7, fill: "#1a1a1a" }}><rect x="0" y="10" width="4" height="14" rx="1"/><rect x="6" y="6" width="4" height="18" rx="1"/><rect x="12" y="2" width="4" height="22" rx="1"/><rect x="18" y="0" width="4" height="24" rx="1"/></svg>
-            <svg viewBox="0 0 24 24" style={{ width: 7, height: 7, fill: "#1a1a1a" }}><rect x="0" y="4" width="18" height="16" rx="2" stroke="#1a1a1a" strokeWidth="2" fill="none"/><rect x="2" y="6" width={isApproved ? 14 : 10} height="12" rx="1" fill="#1a1a1a"/><rect x="18" y="9" width="3" height="6" rx="1" fill="#1a1a1a"/></svg>
+            <svg viewBox="0 0 24 24" style={{ width: 7, height: 7, fill: "#1a1a1a" }}>
+              <rect x="0" y="10" width="4" height="14" rx="1"/><rect x="6" y="6" width="4" height="18" rx="1"/>
+              <rect x="12" y="2" width="4" height="22" rx="1"/><rect x="18" y="0" width="4" height="24" rx="1"/>
+            </svg>
+            <svg viewBox="0 0 24 24" style={{ width: 7, height: 7, fill: "#1a1a1a" }}>
+              <rect x="0" y="4" width="18" height="16" rx="2" stroke="#1a1a1a" strokeWidth="2" fill="none"/>
+              <rect x="2" y="6" width={isApproved ? 14 : 10} height="12" rx="1" fill="#1a1a1a"/>
+              <rect x="18" y="9" width="3" height="6" rx="1" fill="#1a1a1a"/>
+            </svg>
           </div>
         </div>
-        {/* Apple Pay Sheet */}
         <div
           className="absolute bottom-0 left-0 right-0 rounded-t-xl overflow-hidden"
           style={{ height: isApproved ? 88 : 130, background: "#f2f2f7", transition: "height 0.4s ease" }}
@@ -283,7 +372,6 @@ function PhoneScreen({ step }: { step: CrossDeviceStep }) {
             </div>
             <p style={{ fontSize: 5.5, color: "#666" }}>AudioHound Store</p>
           </div>
-
           {!isApproved && (
             <div className="px-2.5 py-1.5 space-y-0.5">
               <div className="flex justify-between" style={{ fontSize: 6 }}>
@@ -297,8 +385,6 @@ function PhoneScreen({ step }: { step: CrossDeviceStep }) {
               </div>
             </div>
           )}
-
-          {/* Face ID scanner */}
           {isFaceId && !isApproved && (
             <div className="mx-2.5 mb-1.5 rounded-lg bg-blue-50 flex flex-col items-center justify-center py-2" style={{ minHeight: 36 }}>
               <div className="relative w-6 h-6 mb-0.5">
@@ -310,8 +396,6 @@ function PhoneScreen({ step }: { step: CrossDeviceStep }) {
               <span style={{ fontSize: 5.5, color: "#007aff", fontWeight: 600 }}>Face ID</span>
             </div>
           )}
-
-          {/* Pay button */}
           <div className={`mx-2.5 mt-0.5 rounded-lg py-1 flex items-center justify-center gap-1 transition-colors ${
             isApproved ? "bg-green-500" : isFaceId ? "bg-gray-300" : "bg-black"
           }`}>
@@ -364,7 +448,6 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      {/* Header */}
       <div className="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-gray-900 flex items-center justify-center shrink-0">
@@ -375,7 +458,7 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
           </div>
           <div>
             <p className="text-sm font-semibold text-gray-900 leading-tight">Cross-Device Payment</p>
-            <p className="text-[10px] text-gray-400 mt-0.5">Desktop initiates → iPhone authenticates</p>
+            <p className="text-[10px] text-gray-400 mt-0.5">Desktop initiates → iPhone authenticates via Continuity</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -393,18 +476,10 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
         </div>
       </div>
 
-      {/* Stage: 3-column layout */}
       <div className="px-4 py-5 flex items-center justify-center gap-3">
-
-        {/* LAPTOP MOCKUP */}
         <div className="flex flex-col items-center gap-1.5">
           <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">Desktop · Safari</p>
-          {/* Laptop outer body */}
-          <div
-            className="relative"
-            style={{ width: 220 }}
-          >
-            {/* Screen bezel */}
+          <div className="relative" style={{ width: 220 }}>
             <div
               className="rounded-xl overflow-hidden border-2 border-gray-700 shadow-xl relative"
               style={{ background: "#2a2a2e", paddingBottom: "65%" }}
@@ -413,23 +488,14 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
                 <LaptopScreen step={step} />
               </div>
             </div>
-            {/* Laptop chin */}
-            <div
-              className="rounded-b-xl"
-              style={{ height: 8, background: "linear-gradient(180deg, #4a4a4e 0%, #3a3a3e 100%)", marginTop: -1 }}
-            />
-            <div
-              className="rounded-b-xl"
-              style={{ height: 4, background: "#2a2a2e", marginTop: 0 }}
-            />
+            <div className="rounded-b-xl" style={{ height: 8, background: "linear-gradient(180deg,#4a4a4e 0%,#3a3a3e 100%)", marginTop: -1 }} />
+            <div className="rounded-b-xl" style={{ height: 4, background: "#2a2a2e" }} />
           </div>
-          {/* Click-to-pay instruction */}
-          {step === "idle" && (
-            <p className="text-[9px] text-gray-400 italic mt-0.5">Click Apple Pay to begin</p>
-          )}
+          {step === "idle" && <p className="text-[9px] text-gray-400 italic mt-0.5">Click Apple Pay to begin</p>}
           {step !== "idle" && step !== "complete" && (
             <p className="text-[9px] text-blue-500 font-medium mt-0.5">
               {step === "qr_shown" ? "Waiting for iPhone…" :
+               step === "handoff" ? "Continuity signal sent" :
                step === "notified" ? "iPhone detected nearby" :
                step === "sheet_open" ? "Sheet presented on iPhone" :
                step === "face_id" ? "Awaiting authentication…" :
@@ -438,22 +504,18 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
           )}
         </div>
 
-        {/* CONNECTION BEAM */}
         <ConnectionBeam step={step} />
 
-        {/* iPHONE MOCKUP */}
         <div className="flex flex-col items-center gap-1.5">
           <p className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest">iPhone · Wallet</p>
           <div
             className="relative rounded-[18px] border-2 border-gray-800 shadow-xl overflow-hidden"
             style={{ width: 96, height: 172, background: "#1c1c1e" }}
           >
-            {/* Notch */}
             <div
               className="absolute top-0 left-1/2 -translate-x-1/2 z-10 rounded-b-xl"
               style={{ width: 28, height: 7, background: "#1c1c1e" }}
             />
-            {/* Screen content */}
             <div className="absolute inset-0">
               <PhoneScreen step={step} />
             </div>
@@ -461,7 +523,8 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
           {step !== "idle" && (
             <p className="text-[9px] text-gray-400 mt-0.5">
               {step === "qr_shown" ? "Sleeping" :
-               step === "notified" ? "Lock screen" :
+               step === "handoff" ? "Handoff circle" :
+               step === "notified" ? "Lock screen alert" :
                step === "sheet_open" ? "Apple Pay sheet" :
                step === "face_id" ? "Face ID scanning" :
                "Payment done"}
@@ -470,14 +533,12 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
         </div>
       </div>
 
-      {/* Step timeline */}
       {step !== "idle" && (
         <div className="px-5 pb-4">
           <div className="flex items-center gap-1">
             {STEPS.map((s, i) => {
-              const stepOrder: CrossDeviceStep[] = ["qr_shown","notified","sheet_open","face_id","approved","complete"];
-              const currentIdx = stepOrder.indexOf(step);
-              const thisIdx = stepOrder.indexOf(s.id);
+              const currentIdx = STEP_ORDER.indexOf(step);
+              const thisIdx = STEP_ORDER.indexOf(s.id);
               const isPast = thisIdx < currentIdx;
               const isCurrent = thisIdx === currentIdx;
               return (
@@ -493,7 +554,7 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
                   {i < STEPS.length - 1 && (
                     <div className={`h-px flex-1 transition-colors duration-500 -mt-3 ${
                       isPast || isDone ? "bg-green-400" : "bg-gray-200"
-                    }`} style={{ maxWidth: 24 }} />
+                    }`} style={{ maxWidth: 20 }} />
                   )}
                 </div>
               );
@@ -502,7 +563,6 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
         </div>
       )}
 
-      {/* Action row */}
       <div className="border-t border-gray-100 px-5 py-4">
         {step === "idle" && (
           <button
@@ -520,8 +580,9 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
             <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce" style={{ animationDelay: "300ms" }} />
             <span className="text-xs text-gray-400 ml-1">
               {step === "qr_shown" ? "Detecting iPhone via Bluetooth…" :
-               step === "notified" ? "iPhone received notification…" :
-               step === "sheet_open" ? "Apple Pay sheet presented…" :
+               step === "handoff" ? "Handoff circle shown on iPhone lock screen…" :
+               step === "notified" ? "Apple Pay notification delivered…" :
+               step === "sheet_open" ? "Apple Pay sheet presented on iPhone…" :
                step === "face_id" ? "Authenticating with Face ID…" :
                "Confirming payment…"}
             </span>
@@ -539,14 +600,13 @@ export default function CrossDeviceSimulator({ onStepChange }: { onStepChange?: 
         )}
       </div>
 
-      {/* Info strip */}
       <div className="border-t border-gray-100 bg-gray-50 px-5 py-2.5 flex items-start gap-2">
         <svg viewBox="0 0 24 24" className="w-3 h-3 fill-none stroke-gray-400 stroke-2 shrink-0 mt-0.5">
           <circle cx="12" cy="12" r="10" /><path strokeLinecap="round" d="M12 8v4M12 16h.01" />
         </svg>
         <p className="text-[10px] text-gray-500 leading-relaxed">
-          Apple Pay Continuity works on macOS Safari when an iPhone on the same iCloud account is nearby via Bluetooth.
-          The <code className="font-mono bg-gray-100 px-0.5 rounded">ApplePaySession</code> API is identical to online flows — the OS handles the cross-device handoff transparently.
+          The Handoff circle appears at the bottom of the iPhone lock screen when a nearby Mac initiates Apple Pay via Bluetooth Continuity.
+          The <code className="font-mono bg-gray-100 px-0.5 rounded">ApplePaySession</code> API is identical to online flows — iOS handles the cross-device handoff transparently, no extra code required.
         </p>
       </div>
     </div>
