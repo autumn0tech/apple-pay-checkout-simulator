@@ -6,10 +6,11 @@ import OrderSummary from "@/components/OrderSummary";
 import SimulationGuide from "@/components/SimulationGuide";
 import InStoreSimulator, { type InStoreProvider } from "@/components/InStoreSimulator";
 import CrossDeviceSimulator from "@/components/CrossDeviceSimulator";
+import ThirdPartyBrowserSimulator from "@/components/ThirdPartyBrowserSimulator";
 
 export type PaymentStatus = "idle" | "processing" | "success" | "failed";
 export type SubStatus = "none" | "upsell" | "processing" | "success" | "declined";
-export type FlowMode = "two-session" | "one-session" | "in-store" | "cross-device";
+export type FlowMode = "two-session" | "one-session" | "in-store" | "cross-device" | "third-party";
 export type SheetMode = "onetime" | "recurring" | "combined";
 
 const CART_ITEMS = [
@@ -189,7 +190,8 @@ export default function Checkout() {
                 { mode: "one-session",   label: "Online: One-Session Flow",  sublabel: "Subscription as SKU at checkout",   activeClass: "bg-indigo-600 text-white shadow-sm" },
                 { mode: "two-session",  label: "Online: Two-Session Flow",  sublabel: "Purchase → post-purchase upsell",   activeClass: "bg-blue-600 text-white shadow-sm" },
                 { mode: "in-store",     label: "In-Store / P400",   sublabel: "NFC tap on Ingenico terminal",      activeClass: "bg-orange-600 text-white shadow-sm" },
-                { mode: "cross-device", label: "Cross-Device",      sublabel: "Desktop → iPhone via Continuity",   activeClass: "bg-gray-900 text-white shadow-sm" },
+                { mode: "cross-device",  label: "Cross-Device",       sublabel: "Desktop → iPhone via Continuity",  activeClass: "bg-gray-900 text-white shadow-sm" },
+                { mode: "third-party",  label: "Third-Party Browser", sublabel: "Chrome / Firefox QR code scan",    activeClass: "bg-gradient-to-r from-blue-600 to-green-600 text-white shadow-sm" },
               ] as { mode: FlowMode; label: string; sublabel: string; activeClass: string }[]).map(({ mode, label, sublabel, activeClass }) => {
                 const active = flowMode === mode;
                 return (
@@ -358,11 +360,16 @@ export default function Checkout() {
               <CrossDeviceSimulator onStepChange={setCurrentStep} />
             )}
 
+            {/* Third-Party Browser simulator */}
+            {flowMode === "third-party" && (
+              <ThirdPartyBrowserSimulator onStepChange={setCurrentStep} />
+            )}
+
             {/* Simulation guide — online flows only */}
-            {flowMode !== "in-store" && flowMode !== "cross-device" && <SimulationGuide flowMode={flowMode} />}
+            {flowMode !== "in-store" && flowMode !== "cross-device" && flowMode !== "third-party" && <SimulationGuide flowMode={flowMode} />}
 
             {/* Express Checkout — online flows only */}
-            {flowMode !== "in-store" && flowMode !== "cross-device" && manualPayStatus === "idle" && <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            {flowMode !== "in-store" && flowMode !== "cross-device" && flowMode !== "third-party" && manualPayStatus === "idle" && <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="flex-1 h-px bg-gray-200"></div>
                 <p className="text-xs font-medium text-gray-500 uppercase tracking-widest">Express Checkout</p>
